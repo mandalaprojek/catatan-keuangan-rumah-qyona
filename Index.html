@@ -1,0 +1,928 @@
+<!DOCTYPE html>
+<html lang="id" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Qyona — Catatan Keuangan Rumah Tangga</title>
+  <!-- Tailwind CSS CDN dengan konfigurasi Dark Mode & Palet Emerald/Teal -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            qyona: {
+              50: '#ecfdf5',
+              100: '#d1fae5',
+              500: '#10b981',
+              600: '#059669',
+              700: '#0f766e',
+              800: '#115e59',
+              900: '#134e4a'
+            }
+          }
+        }
+      }
+    };
+  </script>
+  <!-- Font Awesome 6 Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <!-- Chart.js untuk Grafik Donut & Perbandingan Kategori -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <?!= include('Stylesheet'); ?>
+</head>
+<body class="bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 min-h-screen selection:bg-emerald-500 selection:text-white">
+
+  <!-- ========================================================================
+       TOAST NOTIFICATION & GLOBAL LOADING INDICATOR
+       ======================================================================== -->
+  <div id="toastContainer" class="fixed top-4 right-4 z-[100] flex flex-col gap-2 max-w-sm w-full pointer-events-none px-4 sm:px-0"></div>
+
+  <!-- ========================================================================
+       1. HALAMAN LOGIN & PORTAL PRIVAT KELUARGA (RBAC GATEWAY)
+       ======================================================================== -->
+  <section id="loginView" class="min-h-screen qyona-login-bg flex flex-col justify-between p-4 sm:p-8 relative overflow-hidden">
+    <!-- Top Bar Login -->
+    <div class="max-w-6xl w-full mx-auto flex items-center justify-between z-10">
+      <div class="flex items-center gap-3">
+        <div class="w-11 h-11 rounded-2xl qyona-gradient flex items-center justify-center text-white shadow-lg shadow-emerald-600/25">
+          <i class="fa-solid fa-house-chimney-window text-xl"></i>
+        </div>
+        <div>
+          <span class="font-extrabold text-xl tracking-tight text-slate-900 dark:text-white">Qyona</span>
+          <span class="ml-1.5 text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300/40">Family Finance AI</span>
+          <p class="text-xs text-slate-500 dark:text-slate-400">Catatan Keuangan Rumah Tangga Terpusat</p>
+        </div>
+      </div>
+
+      <!-- Dark Mode Toggle di Halaman Login -->
+      <button onclick="toggleTheme()" class="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:border-emerald-500 transition shadow-sm" title="Ubah Tema Terang / Gelap">
+        <i id="loginThemeIcon" class="fa-solid fa-moon text-sm"></i>
+      </button>
+    </div>
+
+    <!-- Main Content Login -->
+    <div class="max-w-5xl w-full mx-auto my-8 grid grid-cols-1 lg:grid-cols-12 gap-8 items-center z-10">
+      
+      <!-- Kolom Kiri: Value Proposition Sesuai PRD Bab 1 & 2 -->
+      <div class="lg:col-span-6 space-y-6">
+        <div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-teal-500/10 border border-teal-500/20 text-teal-700 dark:text-teal-300 text-xs font-semibold">
+          <span class="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+          Terhubung ke Google Sheets, Drive, WhatsApp & Telegram
+        </div>
+
+        <h1 class="text-3xl sm:text-4xl font-extrabold leading-tight tracking-tight text-slate-900 dark:text-white">
+          Catat Pengeluaran Rumah Cukup Lewat <span class="text-transparent bg-clip-text qyona-gradient">Obrolan Santai & Foto Struk.</span>
+        </h1>
+
+        <p class="text-slate-600 dark:text-slate-300 text-sm sm:text-base leading-relaxed">
+          Tidak perlu lagi repot mengetik form panjang. Kirim pesan seperti <i>"Beli beras 5kg 75rb pakai tunai"</i> atau foto struk belanja bulanan—AI otomatis mengkategorikan dan menyatukannya di dashboard keluarga.
+        </p>
+
+        <!-- 3 Pilar Inti PRD -->
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
+          <div class="p-3.5 rounded-2xl bg-white/80 dark:bg-slate-900/80 backdrop-blur border border-slate-200/80 dark:border-slate-800 shadow-sm">
+            <div class="w-8 h-8 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mb-2">
+              <i class="fa-solid fa-comments"></i>
+            </div>
+            <h3 class="font-bold text-xs text-slate-900 dark:text-white">1. AI Chatbot & OCR</h3>
+            <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Chat bebas & foto struk 20 item langsung tercatat otomatis.</p>
+          </div>
+          <div class="p-3.5 rounded-2xl bg-white/80 dark:bg-slate-900/80 backdrop-blur border border-slate-200/80 dark:border-slate-800 shadow-sm">
+            <div class="w-8 h-8 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center mb-2">
+              <i class="fa-solid fa-chart-pie"></i>
+            </div>
+            <h3 class="font-bold text-xs text-slate-900 dark:text-white">2. Auto-Tracking</h3>
+            <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Pantau arus kas Suami, Istri & kuota jajan Anak real-time.</p>
+          </div>
+          <div class="p-3.5 rounded-2xl bg-white/80 dark:bg-slate-900/80 backdrop-blur border border-slate-200/80 dark:border-slate-800 shadow-sm">
+            <div class="w-8 h-8 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center mb-2">
+              <i class="fa-solid fa-wand-magic-sparkles"></i>
+            </div>
+            <h3 class="font-bold text-xs text-slate-900 dark:text-white">3. AI Insight</h3>
+            <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Deteksi kebocoran anggaran & estimasi hemat tiap bulan.</p>
+          </div>
+        </div>
+
+        <!-- Info Matriks RBAC -->
+        <div class="p-4 rounded-2xl bg-emerald-950/5 dark:bg-slate-900/90 border border-emerald-600/20 text-xs space-y-1.5">
+          <div class="font-bold text-teal-800 dark:text-emerald-400 flex items-center gap-2">
+            <i class="fa-solid fa-shield-halved"></i> Sistem Akses Keluarga Tertutup (RBAC Maks. 6 Anggota)
+          </div>
+          <p class="text-slate-600 dark:text-slate-400">
+            • <b>Admin (Suami & Istri):</b> Akses penuh seluruh rekening, atur budget, approval tagihan & AI Insight keluarga.<br>
+            • <b>Member Terbatas (Anak):</b> Hanya kategori <i>"Jajan/Anak"</i>, pantau sisa kuota jajan pribadi & ajukan dana tambahan.
+          </p>
+        </div>
+      </div>
+
+      <!-- Kolom Kanan: Kartu Login Interaktif -->
+      <div class="lg:col-span-6">
+        <div class="bg-white dark:bg-slate-900 rounded-3xl shadow-xl shadow-slate-900/5 border border-slate-200/90 dark:border-slate-800 p-6 sm:p-8">
+          <div class="flex items-center justify-between mb-6">
+            <div>
+              <h2 class="text-xl font-extrabold text-slate-900 dark:text-white">Masuk ke Rumah Qyona</h2>
+              <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Pilih profil anggota keluarga atau verifikasi ID Chat</p>
+            </div>
+            <span id="capacityBadge" class="text-[11px] font-bold px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+              4 / 6 Anggota
+            </span>
+          </div>
+
+          <!-- Tab Switcher Login Mode -->
+          <div class="grid grid-cols-2 gap-1.5 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl mb-6 text-xs font-bold">
+            <button id="tabLoginProfile" onclick="switchLoginTab('profile')" class="py-2 px-3 rounded-lg bg-white dark:bg-slate-900 text-teal-700 dark:text-emerald-400 shadow-sm transition">
+              <i class="fa-solid fa-users mr-1.5"></i> Profil Keluarga
+            </button>
+            <button id="tabLoginChatId" onclick="switchLoginTab('chatid')" class="py-2 px-3 rounded-lg text-slate-600 dark:text-slate-400 hover:text-slate-900 transition">
+              <i class="fa-brands fa-whatsapp mr-1"></i> ID Chat / Undangan
+            </button>
+          </div>
+
+          <!-- MODE 1: Pilih Profil Anggota Keluarga (Cepat & Praktis) -->
+          <div id="loginModeProfile" class="space-y-5">
+            <div>
+              <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2.5">
+                1. Pilih Identitas Anggota (Klik untuk Memilih)
+              </label>
+              <div id="familyProfileGrid" class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <!-- Diisi dinamis oleh JavaScript -->
+              </div>
+            </div>
+
+            <div>
+              <div class="flex items-center justify-between mb-1.5">
+                <label class="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  2. PIN Keamanan Keluarga
+                </label>
+                <span id="pinHintText" class="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold">
+                  PIN Demo otomatis terisi
+                </span>
+              </div>
+              <div class="relative">
+                <i class="fa-solid fa-lock absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
+                <input id="loginPinInput" type="password" maxlength="6" value="1234"
+                  class="w-full pl-10 pr-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 text-sm font-bold tracking-widest focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  placeholder="Masukkan PIN (cth: 1234)">
+              </div>
+            </div>
+
+            <button onclick="handleProfileLogin()" id="btnSubmitLogin"
+              class="w-full py-3.5 px-5 rounded-xl qyona-gradient text-white font-bold text-sm shadow-lg shadow-emerald-600/25 hover:opacity-95 active:scale-[0.99] transition flex items-center justify-center gap-2">
+              <span>Masuk ke Dashboard Keluarga</span>
+              <i class="fa-solid fa-arrow-right"></i>
+            </button>
+          </div>
+
+          <!-- MODE 2: Verifikasi Nomor WA / ID Chat Telegram + Kode Undangan -->
+          <div id="loginModeChatId" class="space-y-4 hidden">
+            <div>
+              <label class="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">
+                Nomor WhatsApp atau ID Chat Telegram Terdaftar
+              </label>
+              <input id="loginChatIdInput" type="text" value="6281234567802"
+                class="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                placeholder="Contoh: 6281234567802 atau 1001002">
+              <p class="text-[11px] text-slate-400 mt-1">
+                Sesuai kolom <i>ID Chat WhatsApp / Telegram</i> di Sheet Anggota Keluarga.
+              </p>
+            </div>
+
+            <div>
+              <label class="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">
+                Kode Undangan Keluarga (Privat)
+              </label>
+              <input id="loginInviteCodeInput" type="text" value="<?= initialInviteCode ?>"
+                class="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-mono uppercase focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                placeholder="QYONA-2026">
+            </div>
+
+            <button onclick="handleChatIdLogin()"
+              class="w-full py-3.5 px-5 rounded-xl qyona-gradient text-white font-bold text-sm shadow-lg shadow-emerald-600/25 hover:opacity-95 transition flex items-center justify-center gap-2">
+              <i class="fa-solid fa-check-double"></i>
+              <span>Verifikasi ID Chat & Masuk</span>
+            </button>
+          </div>
+
+          <!-- Quick Role Preview Bar -->
+          <div class="mt-6 pt-5 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500 dark:text-slate-400">
+            <span>Ingin langsung uji tampilan RBAC?</span>
+            <div class="flex gap-1.5">
+              <button onclick="quickDemoLogin('USR-02', '1234')" class="px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 font-semibold hover:bg-emerald-100 transition">
+                👩💼 Demo Istri (Admin)
+              </button>
+              <button onclick="quickDemoLogin('USR-03', '1111')" class="px-2.5 py-1 rounded-lg bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 font-semibold hover:bg-purple-100 transition">
+                👦🎒 Demo Anak (Member)
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer Login -->
+    <div class="max-w-6xl w-full mx-auto text-center sm:flex items-center justify-between text-xs text-slate-400 z-10">
+      <p>© 2026 Catatan Keuangan Rumah Qyona • Ditenagai Google Apps Script, Sheets, Drive & Gemini Vision</p>
+      <p class="mt-1 sm:mt-0">Skala Rumah Tangga • LockService Concurrency Aktif</p>
+    </div>
+  </section>
+
+  <!-- ========================================================================
+       2. MAIN APPLICATION SHELL (RESPONSIVE MOBILE-FIRST + DESKTOP 2-PANEL)
+       ======================================================================== -->
+  <div id="mainAppView" class="hidden min-h-screen flex flex-col pb-20 lg:pb-6">
+
+    <!-- TOP NAVIGATION HEADER -->
+    <header class="sticky top-0 z-40 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-slate-200/80 dark:border-slate-800">
+      <div class="max-w-[1440px] mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
+        
+        <!-- Brand & Active Role Badge -->
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl qyona-gradient flex items-center justify-center text-white shadow-md shadow-emerald-600/20">
+            <i class="fa-solid fa-wallet text-lg"></i>
+          </div>
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="font-extrabold text-lg tracking-tight text-slate-900 dark:text-white">Qyona</span>
+              <span id="activeRoleBadge" class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                Admin
+              </span>
+            </div>
+            <p id="activeUserSubtitle" class="text-[11px] text-slate-500 dark:text-slate-400 truncate max-w-[180px] sm:max-w-none">
+              Bunda Qyona (Istri)
+            </p>
+          </div>
+        </div>
+
+        <!-- Desktop Navigation Pills -->
+        <nav class="hidden md:flex items-center gap-1 bg-slate-100 dark:bg-slate-800/90 p-1 rounded-xl border border-slate-200/60 dark:border-slate-700/60">
+          <button onclick="switchMainTab('dashboard')" data-tab="dashboard" class="nav-tab-btn px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5">
+            <i class="fa-solid fa-chart-pie"></i> Dashboard
+          </button>
+          <button onclick="switchMainTab('chat')" data-tab="chat" class="nav-tab-btn lg:hidden px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5">
+            <i class="fa-solid fa-robot"></i> Chat AI
+          </button>
+          <button onclick="switchMainTab('insight')" data-tab="insight" class="nav-tab-btn px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5">
+            <i class="fa-solid fa-wand-magic-sparkles"></i> AI Insight
+          </button>
+          <button onclick="switchMainTab('bills')" data-tab="bills" class="nav-tab-btn px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5">
+            <i class="fa-solid fa-calendar-check"></i> <span id="navBillsLabel">Tagihan & Approval</span>
+          </button>
+          <button id="navManageBtn" onclick="switchMainTab('manage')" data-tab="manage" class="nav-tab-btn px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5">
+            <i class="fa-solid fa-sliders"></i> Dompet & Keluarga
+          </button>
+        </nav>
+
+        <!-- Right Controls: Month Filter, Quick Role Switcher, Theme, Logout -->
+        <div class="flex items-center gap-2">
+          <!-- Pemilih Bulan -->
+          <input id="monthPickerInput" type="month" onchange="refreshDashboardData(true)"
+            class="px-2.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500">
+
+          <!-- Tombol Tambah Transaksi Cepat -->
+          <button onclick="openTransactionModal()" class="hidden sm:inline-flex items-center gap-1.5 px-3 py-2 rounded-xl qyona-gradient text-white text-xs font-bold shadow-sm hover:opacity-95 transition">
+            <i class="fa-solid fa-plus"></i>
+            <span>Catat Manual</span>
+          </button>
+
+          <!-- Tombol Refresh Sinkronisasi Sheet -->
+          <button onclick="refreshDashboardData(true)" id="btnSyncIndicator" class="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-emerald-600 transition" title="Sinkronisasi Real-Time dengan Google Sheets">
+            <i id="syncIcon" class="fa-solid fa-arrows-rotate text-xs"></i>
+          </button>
+
+          <!-- Toggle Dark Mode -->
+          <button onclick="toggleTheme()" class="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-emerald-600 transition" title="Toggle Dark Mode">
+            <i id="appThemeIcon" class="fa-solid fa-moon text-xs"></i>
+          </button>
+
+          <!-- Ganti Akun / Logout -->
+          <button onclick="logoutSession()" class="p-2 rounded-xl bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 hover:bg-rose-100 transition text-xs font-bold flex items-center gap-1" title="Ganti Anggota / Keluar">
+            <i class="fa-solid fa-right-from-bracket"></i>
+            <span class="hidden xl:inline">Keluar</span>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- ======================================================================
+         MAIN WORKSPACE: DESKTOP 2-PANEL (KIRI: KONTEN UTAMA, KANAN: STICKY AI CHATBOT)
+         Sesuai PRD Bab 7.1: "Di desktop, layout melebar dua panel — Dashboard grafik di kiri, panel Chat AI di kanan."
+         ====================================================================== -->
+    <main class="max-w-[1440px] w-full mx-auto px-4 sm:px-6 pt-5 flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+
+      <!-- ====================================================================
+           PANEL KIRI (8 KOLOM DI DESKTOP): DASHBOARD, INSIGHT, TAGIHAN, KELOLA
+           ==================================================================== -->
+      <div id="leftPrimaryPanel" class="lg:col-span-7 xl:col-span-8 space-y-6">
+
+        <!-- RBAC Banner khusus Member Terbatas (Anak) -->
+        <div id="childRbacBanner" class="hidden p-4 rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md">
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center text-xl">🎒</div>
+              <div>
+                <h3 class="font-extrabold text-sm">Mode Dompet Pintar Anak (Akses Terbatas RBAC)</h3>
+                <p class="text-xs text-purple-100">Semua catatanmu otomatis masuk kategori <b>Jajan/Anak</b>. Butuh dana ekstra untuk sekolah? Ajukan ke Ayah & Bunda!</p>
+              </div>
+            </div>
+            <button onclick="openFundRequestModal()" class="px-3.5 py-2 rounded-xl bg-white text-purple-700 font-bold text-xs shadow hover:bg-purple-50 transition">
+              <i class="fa-solid fa-hand-holding-dollar mr-1"></i> Ajukan Dana Tambahan
+            </button>
+          </div>
+        </div>
+
+        <!-- ==================================================================
+             VIEW 1: DASHBOARD RINGKASAN REAL-TIME (US-3 & US-7)
+             ================================================================== -->
+        <div id="viewDashboard" class="space-y-6 animate-fade-in">
+          
+          <!-- Top Summary Cards -->
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <!-- Card 1: Saldo Gabungan / Sisa Kuota Anak -->
+            <div class="p-5 rounded-3xl qyona-gradient text-white shadow-lg shadow-emerald-600/20 relative overflow-hidden">
+              <div class="absolute -right-6 -bottom-6 w-28 h-28 rounded-full bg-white/10"></div>
+              <div class="flex items-center justify-between">
+                <span id="lblCardBalance" class="text-xs font-semibold uppercase tracking-wider text-emerald-100">Saldo Gabungan Rumah</span>
+                <i class="fa-solid fa-building-columns text-emerald-200"></i>
+              </div>
+              <div id="valTotalBalance" class="text-2xl sm:text-3xl font-extrabold mt-2 tracking-tight">Rp 0</div>
+              <div id="subTotalBalance" class="text-[11px] text-emerald-100 mt-2 flex items-center gap-1.5">
+                <span class="w-2 h-2 rounded-full bg-emerald-300 animate-pulse"></span>
+                <span>Auto-sync aktif dari 5 sumber dana</span>
+              </div>
+            </div>
+
+            <!-- Card 2: Pemasukan / Kuota Bulanan -->
+            <div class="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm">
+              <div class="flex items-center justify-between">
+                <span id="lblCardIncome" class="text-xs font-bold uppercase tracking-wider text-slate-400">Pemasukan Bulan Ini</span>
+                <span class="w-8 h-8 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                  <i class="fa-solid fa-arrow-trend-up text-xs"></i>
+                </span>
+              </div>
+              <div id="valTotalIncome" class="text-2xl font-extrabold text-slate-900 dark:text-white mt-2">Rp 0</div>
+              <div class="mt-2 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
+                <span>Target Anggaran:</span>
+                <b id="valTotalBudgetLimit" class="text-slate-700 dark:text-slate-300">Rp 0</b>
+              </div>
+            </div>
+
+            <!-- Card 3: Pengeluaran & Persentase Budget -->
+            <div class="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-bold uppercase tracking-wider text-slate-400">Pengeluaran Bulan Ini</span>
+                <span class="w-8 h-8 rounded-xl bg-rose-500/10 text-rose-600 dark:text-rose-400 flex items-center justify-center">
+                  <i class="fa-solid fa-arrow-trend-down text-xs"></i>
+                </span>
+              </div>
+              <div id="valTotalExpense" class="text-2xl font-extrabold text-slate-900 dark:text-white mt-2">Rp 0</div>
+              <div class="mt-2.5">
+                <div class="flex justify-between text-[11px] font-semibold mb-1">
+                  <span id="lblBudgetStatusText" class="text-slate-500">Terpakai 0% dari budget</span>
+                  <span id="valTrxCount" class="text-teal-600 dark:text-teal-400">0 Transaksi</span>
+                </div>
+                <div class="w-full h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+                  <div id="barOverallBudget" class="h-full rounded-full bg-emerald-500 progress-fill" style="width: 0%"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Action Bar: Ekspor Laporan PDF / CSV & Foto Struk Cepat (US-2 & US-7) -->
+          <div class="flex flex-wrap items-center justify-between gap-3 p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm">
+            <div class="flex items-center gap-2.5">
+              <button onclick="openTransactionModal()" class="px-3.5 py-2 rounded-xl qyona-gradient text-white text-xs font-bold shadow-sm hover:opacity-95 transition flex items-center gap-1.5">
+                <i class="fa-solid fa-plus"></i> Input Transaksi
+              </button>
+              <button onclick="openOcrScannerModal()" class="px-3.5 py-2 rounded-xl bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20 text-xs font-bold hover:bg-amber-500/20 transition flex items-center gap-1.5">
+                <i class="fa-solid fa-camera-retro"></i> Scan Foto Struk (OCR)
+              </button>
+            </div>
+            <div class="flex items-center gap-2">
+              <button onclick="handleExportPdf()" id="btnExportPdf" class="px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-bold text-slate-700 dark:text-slate-200 transition flex items-center gap-1.5">
+                <i class="fa-solid fa-file-pdf text-rose-500"></i> Unduh PDF Bulanan
+              </button>
+              <button onclick="handleExportCsv()" class="px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-bold text-slate-700 dark:text-slate-200 transition flex items-center gap-1.5">
+                <i class="fa-solid fa-file-csv text-emerald-600"></i> Ekspor CSV / Excel
+              </button>
+            </div>
+          </div>
+
+          <!-- Grafik Donut Kategori & Progress Bar Auto-Tracking (US-3 AC1) -->
+          <div class="grid grid-cols-1 xl:grid-cols-12 gap-6">
+            <!-- Grafik Donut -->
+            <div class="xl:col-span-5 p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm flex flex-col justify-between">
+              <div>
+                <div class="flex items-center justify-between mb-1">
+                  <h3 class="font-extrabold text-sm text-slate-900 dark:text-white">Proporsi Pengeluaran</h3>
+                  <span class="text-[11px] font-semibold text-slate-400">Auto-Tracking</span>
+                </div>
+                <p class="text-xs text-slate-500 dark:text-slate-400 mb-4">Visualisasi distribusi pengeluaran keluarga</p>
+              </div>
+              <div class="relative h-56 flex items-center justify-center">
+                <canvas id="categoryDonutChart"></canvas>
+              </div>
+              <div id="donutLegendList" class="mt-4 grid grid-cols-2 gap-2 text-xs"></div>
+            </div>
+
+            <!-- Progress Bar Budget per Kategori (Oranye = Dapur, Biru = Tagihan, Ungu = Anak, Merah = Overbudget) -->
+            <div class="xl:col-span-7 p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm">
+              <div class="flex items-center justify-between mb-4">
+                <div>
+                  <h3 class="font-extrabold text-sm text-slate-900 dark:text-white">Realisasi Anggaran per Kategori</h3>
+                  <p class="text-xs text-slate-500 dark:text-slate-400">Peringatan kuning pada 80% & merah saat overbudget (100%)</p>
+                </div>
+                <span class="text-[11px] font-bold px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                  Bulan Berjalan
+                </span>
+              </div>
+              <div id="categoryProgressList" class="space-y-4 max-h-[340px] overflow-y-auto pr-1">
+                <!-- Diisi dinamis oleh JS -->
+              </div>
+            </div>
+          </div>
+
+          <!-- Daftar Riwayat Transaksi Terbaru Berlabel Nama Penginput -->
+          <div class="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+              <div>
+                <h3 class="font-extrabold text-base text-slate-900 dark:text-white">Riwayat Transaksi Keluarga</h3>
+                <p class="text-xs text-slate-500 dark:text-slate-400">Tergabung otomatis dari Chat WhatsApp/Telegram, Scan OCR Struk & Form</p>
+              </div>
+              <div class="flex items-center gap-2">
+                <div class="relative">
+                  <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+                  <input id="searchTrxInput" type="text" oninput="renderTransactionList()" placeholder="Cari beras, bensin, Raka..."
+                    class="pl-8 pr-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                </div>
+                <select id="filterCategorySelect" onchange="renderTransactionList()"
+                  class="px-2.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold focus:outline-none">
+                  <option value="ALL">Semua Kategori</option>
+                </select>
+              </div>
+            </div>
+
+            <div id="transactionListContainer" class="divide-y divide-slate-100 dark:divide-slate-800/80">
+              <!-- Diisi dinamis oleh JS -->
+            </div>
+          </div>
+        </div>
+
+        <!-- ==================================================================
+             VIEW 2: AI INSIGHT & REKOMENDASI PENGHEMATAN KONKRET (US-4)
+             ================================================================== -->
+        <div id="viewInsight" class="space-y-6 hidden animate-fade-in">
+          <div class="p-6 rounded-3xl qyona-gradient text-white shadow-lg flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div class="space-y-1">
+              <div class="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider bg-white/20 px-2.5 py-0.5 rounded-full">
+                <i class="fa-solid fa-sparkles"></i> Analisis Proaktif Berbasis Data Historis
+              </div>
+              <h2 class="text-xl sm:text-2xl font-extrabold">AI Insight & Deteksi Kebocoran Anggaran</h2>
+              <p class="text-xs sm:text-sm text-emerald-100 max-w-xl">
+                Membandingkan pola pengeluaran bulan berjalan vs bulan lalu serta memberi estimasi penghematan konkret. Dikirim otomatis ke WhatsApp/Telegram Admin setiap tanggal 1.
+              </p>
+            </div>
+            <button onclick="handleGenerateNewInsight()" id="btnGenerateInsight"
+              class="shrink-0 px-4 py-3 rounded-2xl bg-white text-teal-800 font-extrabold text-xs shadow-md hover:bg-emerald-50 transition flex items-center gap-2">
+              <i class="fa-solid fa-wand-magic-sparkles"></i>
+              <span>Analisis Ulang Sekarang</span>
+            </button>
+          </div>
+
+          <!-- Grafik Komparasi Bulan Ini vs Bulan Lalu (US-4 AC1) -->
+          <div id="insightComparisonCard" class="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm">
+            <div class="flex items-center justify-between mb-4">
+              <div>
+                <h3 class="font-extrabold text-sm text-slate-900 dark:text-white">Komparasi Pengeluaran: Bulan Berjalan vs Bulan Lalu</h3>
+                <p class="text-xs text-slate-500 dark:text-slate-400">Mendeteksi lonjakan pengeluaran per kategori secara instan</p>
+              </div>
+            </div>
+            <div class="h-64">
+              <canvas id="comparisonBarChart"></canvas>
+            </div>
+          </div>
+
+          <!-- Smart Cards AI Insight (US-4 AC2) -->
+          <div id="insightCardsContainer" class="grid grid-cols-1 gap-4">
+            <!-- Diisi dinamis oleh JS -->
+          </div>
+        </div>
+
+        <!-- ==================================================================
+             VIEW 3: TAGIHAN RUTIN & APPROVAL PENGAJUAN DANA (US-5 & US-6)
+             ================================================================== -->
+        <div id="viewBills" class="space-y-6 hidden animate-fade-in">
+          <!-- Bagian 1: Approval Pengajuan Dana Anak / Keluarga -->
+          <div class="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm">
+            <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+              <div>
+                <h3 class="font-extrabold text-base text-slate-900 dark:text-white flex items-center gap-2">
+                  <i class="fa-solid fa-hand-holding-dollar text-purple-500"></i>
+                  <span>Pengajuan Dana Tambahan & Approval</span>
+                </h3>
+                <p class="text-xs text-slate-500 dark:text-slate-400">Permintaan kuota tambahan dari Anak atau pengajuan pengeluaran besar</p>
+              </div>
+              <button onclick="openFundRequestModal()" class="px-3.5 py-2 rounded-xl bg-purple-600 text-white text-xs font-bold hover:bg-purple-700 transition flex items-center gap-1.5">
+                <i class="fa-solid fa-plus"></i> Buat Pengajuan Dana
+              </button>
+            </div>
+            <div id="fundRequestListContainer" class="space-y-3">
+              <!-- Diisi dinamis oleh JS -->
+            </div>
+          </div>
+
+          <!-- Bagian 2: Kalender Tagihan Rutin Rumah Tangga (Khusus Admin) -->
+          <div id="adminBillsSection" class="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm">
+            <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+              <div>
+                <h3 class="font-extrabold text-base text-slate-900 dark:text-white flex items-center gap-2">
+                  <i class="fa-solid fa-calendar-day text-blue-500"></i>
+                  <span>Kalender Jatuh Tempo Tagihan Rutin</span>
+                </h3>
+                <p class="text-xs text-slate-500 dark:text-slate-400">Trigger otomatis mengirim pengingat H-3 ke WhatsApp/Telegram. Klik "Tandai Lunas" untuk langsung mencatat pengeluaran.</p>
+              </div>
+              <button onclick="openAddBillModal()" class="px-3.5 py-2 rounded-xl qyona-gradient text-white text-xs font-bold hover:opacity-95 transition flex items-center gap-1.5">
+                <i class="fa-solid fa-plus"></i> Tambah Tagihan Rutin
+              </button>
+            </div>
+            <div id="billsListContainer" class="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <!-- Diisi dinamis oleh JS -->
+            </div>
+          </div>
+        </div>
+
+        <!-- ==================================================================
+             VIEW 4: KELOLA DOMPET, TARGET BUDGET & ANGGOTA KELUARGA (ADMIN ONLY)
+             ================================================================== -->
+        <div id="viewManage" class="space-y-6 hidden animate-fade-in">
+          
+          <!-- Sumber Dana / Dompet -->
+          <div class="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm">
+            <div class="flex items-center justify-between mb-4">
+              <div>
+                <h3 class="font-extrabold text-base text-slate-900 dark:text-white">Dompet & Sumber Dana Keluarga</h3>
+                <p class="text-xs text-slate-500 dark:text-slate-400">Pemisahan saldo Bank, E-Wallet, dan Tunai Dapur</p>
+              </div>
+              <button onclick="openAddWalletModal()" class="px-3.5 py-2 rounded-xl qyona-gradient text-white text-xs font-bold flex items-center gap-1.5">
+                <i class="fa-solid fa-plus"></i> Tambah Dompet
+              </button>
+            </div>
+            <div id="walletsGridContainer" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3.5">
+              <!-- Diisi dinamis oleh JS -->
+            </div>
+          </div>
+
+          <!-- Pengaturan Target Budget per Kategori -->
+          <div class="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm">
+            <div class="mb-4">
+              <h3 class="font-extrabold text-base text-slate-900 dark:text-white">Atur Target Anggaran & Ambang Peringatan (%)</h3>
+              <p class="text-xs text-slate-500 dark:text-slate-400">Ubah batas bulanan per kategori untuk kalkulasi Auto-Tracking</p>
+            </div>
+            <div id="budgetSettingsContainer" class="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <!-- Diisi dinamis oleh JS -->
+            </div>
+          </div>
+
+          <!-- Anggota Keluarga & RBAC (Maks 6 Anggota) -->
+          <div class="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm">
+            <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+              <div>
+                <h3 class="font-extrabold text-base text-slate-900 dark:text-white">Daftar Anggota Keluarga & Matriks RBAC</h3>
+                <p class="text-xs text-slate-500 dark:text-slate-400">Daftarkan ID Chat WhatsApp/Telegram anggota agar bot mengenali peran mereka (Maks. 6 Anggota)</p>
+              </div>
+              <button onclick="openInviteMemberModal()" class="px-3.5 py-2 rounded-xl qyona-gradient text-white text-xs font-bold flex items-center gap-1.5">
+                <i class="fa-solid fa-user-plus"></i> Undang Anggota
+              </button>
+            </div>
+            <div id="familyMembersTableContainer" class="overflow-x-auto">
+              <!-- Diisi dinamis oleh JS -->
+            </div>
+          </div>
+
+          <!-- Integrasi PropertiesService, Webhook & Time-Driven Triggers -->
+          <div class="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm space-y-4">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h3 class="font-extrabold text-base text-slate-900 dark:text-white flex items-center gap-2">
+                  <i class="fa-solid fa-gears text-teal-600"></i>
+                  <span>Konfigurasi Bot Engine, AI Vision & Trigger Otomatis (PropertiesService)</span>
+                </h3>
+                <p class="text-xs text-slate-500 dark:text-slate-400">Token disimpan aman di <code>ScriptProperties</code> Google Apps Script, tidak di-hardcode di kode sumber.</p>
+              </div>
+              <button onclick="handleSetupTriggers()" class="px-3.5 py-2 rounded-xl bg-teal-500/10 text-teal-700 dark:text-teal-300 border border-teal-500/20 text-xs font-bold hover:bg-teal-500/20 transition">
+                <i class="fa-solid fa-clock-rotate-left mr-1"></i> Aktifkan Trigger Harian & Bulanan
+              </button>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
+              <div>
+                <label class="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Gemini API Key (OCR Vision & NLP)</label>
+                <input id="cfgGeminiKey" type="password" placeholder="AIzaSy..." class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs">
+              </div>
+              <div>
+                <label class="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Telegram Bot Token (@BotFather)</label>
+                <input id="cfgTelegramToken" type="password" placeholder="123456:ABC-DEF..." class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs">
+              </div>
+              <div>
+                <label class="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">WhatsApp Cloud API / Fonnte Token</label>
+                <input id="cfgWaToken" type="password" placeholder="EAA... atau Token Fonnte" class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs">
+              </div>
+              <div>
+                <label class="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Kode Undangan Keluarga</label>
+                <input id="cfgInviteCode" type="text" placeholder="QYONA-2026" class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-mono">
+              </div>
+            </div>
+            <div class="flex justify-end">
+              <button onclick="handleSaveSystemConfig()" class="px-4 py-2 rounded-xl qyona-gradient text-white text-xs font-bold shadow">
+                <i class="fa-solid fa-floppy-disk mr-1"></i> Simpan ke PropertiesService
+              </button>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+
+      <!-- ====================================================================
+           PANEL KANAN (4 KOLOM DI DESKTOP): RUANG OBROLAN AI CHATBOT + MIC + KAMERA
+           Selalu tampil berdampingan di Desktop, atau diakses lewat tab Chat di Mobile
+           ==================================================================== -->
+      <aside id="rightChatbotPanel" class="lg:col-span-5 xl:col-span-4 lg:sticky lg:top-20">
+        <div class="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/90 dark:border-slate-800 shadow-lg flex flex-col h-[calc(100vh-8.5rem)] min-h-[540px] max-h-[760px] overflow-hidden">
+          
+          <!-- Header Chatbot -->
+          <div class="p-4 qyona-gradient text-white flex items-center justify-between">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-2xl bg-white/20 backdrop-blur flex items-center justify-center text-lg relative">
+                <i class="fa-solid fa-robot"></i>
+                <span class="w-2.5 h-2.5 rounded-full bg-emerald-300 border-2 border-teal-700 absolute -bottom-0.5 -right-0.5"></span>
+              </div>
+              <div>
+                <div class="flex items-center gap-1.5">
+                  <h3 class="font-extrabold text-sm">Asisten AI Qyona</h3>
+                  <span class="text-[10px] px-2 py-0.5 rounded-full bg-white/20 font-semibold">WA / TG Sync</span>
+                </div>
+                <p class="text-[11px] text-emerald-100">Ketik santai, rekam suara, atau kirim foto struk</p>
+              </div>
+            </div>
+            <button onclick="openOcrScannerModal()" class="p-2 rounded-xl bg-white/15 hover:bg-white/25 text-white transition text-xs font-bold flex items-center gap-1.5" title="Unggah / Foto Struk Belanja">
+              <i class="fa-solid fa-camera"></i>
+              <span class="text-[11px]">Struk</span>
+            </button>
+          </div>
+
+          <!-- Quick Prompt Chips -->
+          <div class="px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200/70 dark:border-slate-800 flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+            <button onclick="sendQuickPrompt('Beli beras 5kg 75rb pakai tunai')" class="shrink-0 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-emerald-500 transition">
+              🌾 Beli beras 5kg 75rb
+            </button>
+            <button onclick="sendQuickPrompt('Sisa uang makan bulan ini berapa?')" class="shrink-0 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-emerald-500 transition">
+              🍲 Sisa uang makan?
+            </button>
+            <button onclick="sendQuickPrompt('Isi bensin Pertamax 150rb pakai GoPay')" class="shrink-0 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-emerald-500 transition">
+              ⛽ Isi bensin 150rb
+            </button>
+            <button onclick="sendQuickPrompt('Jajan roti bakar dan susu 25rb')" class="shrink-0 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-emerald-500 transition">
+              🥪 Jajan 25rb
+            </button>
+          </div>
+
+          <!-- Area Pesan Obrolan -->
+          <div id="chatMessagesContainer" class="flex-1 p-4 overflow-y-auto space-y-3.5 bg-slate-50/50 dark:bg-slate-950/40">
+            <!-- Diisi oleh JS -->
+          </div>
+
+          <!-- Kotak Konfirmasi Kategori (Muncul saat AC2: Kategori belum terdeteksi otomatis) -->
+          <div id="chatCategoryConfirmBox" class="hidden px-4 py-3 bg-amber-50 dark:bg-amber-950/50 border-t border-amber-200 dark:border-amber-800/60">
+            <p class="text-xs font-bold text-amber-800 dark:text-amber-300 mb-2">
+              <i class="fa-solid fa-circle-question mr-1"></i> Pilih kategori untuk menyimpan transaksi:
+            </p>
+            <div id="chatCategoryChips" class="flex flex-wrap gap-1.5"></div>
+          </div>
+
+          <!-- Input Bar: Kamera (Foto Struk) + Text Input + Mikrofon (Voice Web Speech API) + Send -->
+          <div class="p-3 bg-white dark:bg-slate-900 border-t border-slate-200/80 dark:border-slate-800">
+            <form onsubmit="handleChatSubmit(event)" class="flex items-center gap-2">
+              <!-- Tombol Kamera Struk -->
+              <button type="button" onclick="openOcrScannerModal()"
+                class="w-10 h-10 shrink-0 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-emerald-50 hover:text-emerald-600 transition flex items-center justify-center"
+                title="Foto Struk Belanja (OCR Vision)">
+                <i class="fa-solid fa-camera"></i>
+              </button>
+
+              <!-- Tombol Mikrofon Pesan Suara -->
+              <button type="button" id="btnVoiceMic" onclick="toggleVoiceRecognition()"
+                class="w-10 h-10 shrink-0 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-rose-50 hover:text-rose-600 transition flex items-center justify-center"
+                title="Bicara dengan Suara (Bahasa Indonesia)">
+                <i class="fa-solid fa-microphone"></i>
+              </button>
+
+              <!-- Text Input -->
+              <input id="chatTextInput" type="text" autocomplete="off"
+                placeholder="Ketik 'Beli gas 22rb pakai tunai'..."
+                class="flex-1 px-3.5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-transparent focus:border-emerald-500 text-xs sm:text-sm focus:outline-none">
+
+              <!-- Tombol Kirim -->
+              <button type="submit" id="btnSendChat"
+                class="w-10 h-10 shrink-0 rounded-xl qyona-gradient text-white shadow-md shadow-emerald-600/20 hover:opacity-95 transition flex items-center justify-center">
+                <i class="fa-solid fa-paper-plane text-xs"></i>
+              </button>
+            </form>
+          </div>
+        </div>
+      </aside>
+
+    </main>
+
+    <!-- ======================================================================
+         BOTTOM NAVIGATION BAR (MOBILE-FIRST SESUAI PRD BAB 7.1)
+         ====================================================================== -->
+    <nav class="md:hidden fixed bottom-0 inset-x-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-200 dark:border-slate-800 px-2 py-1.5">
+      <div class="grid grid-cols-5 gap-1 max-w-md mx-auto">
+        <button onclick="switchMainTab('dashboard')" data-tab="dashboard" class="mobile-nav-btn flex flex-col items-center py-1.5 rounded-xl text-[10px] font-bold">
+          <i class="fa-solid fa-chart-pie text-base mb-0.5"></i>
+          <span>Dashboard</span>
+        </button>
+        <button onclick="switchMainTab('chat')" data-tab="chat" class="mobile-nav-btn flex flex-col items-center py-1.5 rounded-xl text-[10px] font-bold">
+          <i class="fa-solid fa-comments text-base mb-0.5"></i>
+          <span>Chat AI</span>
+        </button>
+        <button onclick="openOcrScannerModal()" class="flex flex-col items-center justify-center -mt-4">
+          <div class="w-12 h-12 rounded-2xl qyona-gradient text-white flex items-center justify-center shadow-lg shadow-emerald-600/30">
+            <i class="fa-solid fa-camera text-lg"></i>
+          </div>
+          <span class="text-[10px] font-extrabold text-teal-700 dark:text-emerald-400 mt-0.5">Struk OCR</span>
+        </button>
+        <button onclick="switchMainTab('insight')" data-tab="insight" class="mobile-nav-btn flex flex-col items-center py-1.5 rounded-xl text-[10px] font-bold">
+          <i class="fa-solid fa-wand-magic-sparkles text-base mb-0.5"></i>
+          <span>Insight</span>
+        </button>
+        <button onclick="switchMainTab('bills')" data-tab="bills" class="mobile-nav-btn flex flex-col items-center py-1.5 rounded-xl text-[10px] font-bold">
+          <i class="fa-solid fa-calendar-check text-base mb-0.5"></i>
+          <span>Tagihan</span>
+        </button>
+      </div>
+    </nav>
+  </div>
+
+  <!-- ========================================================================
+       MODAL 1: FORM INPUT / EDIT TRANSAKSI MANUAL (HALAMAN 3 PRD BAB 7.2)
+       ======================================================================== -->
+  <div id="modalTransaction" class="fixed inset-0 z-50 hidden bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-slate-900 rounded-3xl max-w-md w-full p-6 border border-slate-200 dark:border-slate-800 shadow-2xl animate-fade-in">
+      <div class="flex items-center justify-between mb-4">
+        <h3 id="modalTrxTitle" class="font-extrabold text-base text-slate-900 dark:text-white">Catat Transaksi Manual</h3>
+        <button onclick="closeModal('modalTransaction')" class="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-500 flex items-center justify-center">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+      <form onsubmit="submitManualTransaction(event)" class="space-y-4">
+        <input type="hidden" id="trxFormId">
+        <div id="trxTypeToggleWrapper" class="grid grid-cols-2 gap-2 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl text-xs font-bold">
+          <button type="button" id="btnTypeKeluar" onclick="setTrxFormType('Keluar')" class="py-2 rounded-lg bg-rose-500 text-white transition">Pengeluaran (Keluar)</button>
+          <button type="button" id="btnTypeMasuk" onclick="setTrxFormType('Masuk')" class="py-2 rounded-lg text-slate-600 dark:text-slate-400 transition">Pemasukan (Masuk)</button>
+        </div>
+        <input type="hidden" id="trxFormType" value="Keluar">
+
+        <div>
+          <label class="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Nominal (Rp)</label>
+          <input id="trxFormAmount" type="number" required min="100" placeholder="75000"
+            class="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-base font-extrabold focus:outline-none focus:ring-2 focus:ring-emerald-500">
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Kategori</label>
+            <select id="trxFormCategory" class="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold"></select>
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Sumber Dompet</label>
+            <select id="trxFormWallet" class="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold"></select>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Keterangan Item</label>
+          <input id="trxFormDesc" type="text" required placeholder="Contoh: Beli beras 5kg & minyak goreng"
+            class="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500">
+        </div>
+
+        <div class="pt-2 flex justify-end gap-2">
+          <button type="button" onclick="closeModal('modalTransaction')" class="px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-bold">Batal</button>
+          <button type="submit" class="px-5 py-2.5 rounded-xl qyona-gradient text-white text-xs font-bold shadow">Simpan Transaksi</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ========================================================================
+       MODAL 2: SCANNER FOTO STRUK BELANJA (OCR VISION + KOREKSI PER ITEM US-2)
+       ======================================================================== -->
+  <div id="modalOcrScanner" class="fixed inset-0 z-50 hidden bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-slate-900 rounded-3xl max-w-2xl w-full p-6 border border-slate-200 dark:border-slate-800 shadow-2xl max-h-[90vh] flex flex-col animate-fade-in">
+      <div class="flex items-center justify-between mb-4">
+        <div>
+          <h3 class="font-extrabold text-base text-slate-900 dark:text-white flex items-center gap-2">
+            <i class="fa-solid fa-camera-retro text-emerald-500"></i>
+            <span>Scan Foto Struk Belanja (AI OCR Vision)</span>
+          </h3>
+          <p class="text-xs text-slate-500 dark:text-slate-400">Unggah foto struk (otomatis dikompresi & disimpan ke Drive <code>Qyona_Struk_Belanja</code>)</p>
+        </div>
+        <button onclick="closeModal('modalOcrScanner')" class="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-500 flex items-center justify-center">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <div class="flex-1 overflow-y-auto space-y-4 pr-1">
+        <!-- Upload Box -->
+        <div class="border-2 border-dashed border-emerald-500/40 rounded-2xl p-4 text-center bg-emerald-50/40 dark:bg-emerald-950/20">
+          <input type="file" id="receiptFileInput" accept="image/*" capture="environment" onchange="handleReceiptFileSelected(event)" class="hidden">
+          <div class="flex flex-wrap items-center justify-center gap-3">
+            <button type="button" onclick="document.getElementById('receiptFileInput').click()"
+              class="px-4 py-2.5 rounded-xl qyona-gradient text-white text-xs font-bold shadow flex items-center gap-2">
+              <i class="fa-solid fa-cloud-arrow-up"></i> Pilih Foto Struk / Kamera HP
+            </button>
+            <button type="button" onclick="triggerSampleReceiptOcr()"
+              class="px-4 py-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold text-teal-700 dark:text-emerald-300 hover:border-emerald-500 transition">
+              <i class="fa-solid fa-bolt mr-1"></i> Simulasi Struk Belanja Bulanan (7 Item)
+            </button>
+          </div>
+          <p id="ocrUploadStatus" class="text-[11px] text-slate-500 mt-2">Mendukung kompresi gambar otomatis sebelum dikirim ke Google Drive.</p>
+        </div>
+
+        <!-- Hasil Ekstraksi Item Struk (US-2 AC2: Opsi Koreksi Manual per Item) -->
+        <div id="ocrExtractedSection" class="hidden space-y-3">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <span class="text-xs font-extrabold text-slate-700 dark:text-slate-200">
+              Daftar Item Terdeteksi (Dapat Dikoreksi Sebelum Disimpan):
+            </span>
+            <select id="ocrTargetWallet" class="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-bold border border-slate-200 dark:border-slate-700"></select>
+          </div>
+          <div id="ocrItemsTableBody" class="space-y-2"></div>
+          <button type="button" onclick="addBlankOcrRow()" class="text-xs font-bold text-emerald-600 hover:underline">
+            + Tambah Baris Item Manual
+          </button>
+        </div>
+      </div>
+
+      <div class="pt-4 mt-4 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between">
+        <div id="ocrTotalPreview" class="text-xs font-extrabold text-slate-700 dark:text-slate-200">Total Struk: Rp 0</div>
+        <div class="flex gap-2">
+          <button type="button" onclick="closeModal('modalOcrScanner')" class="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-bold">Tutup</button>
+          <button type="button" id="btnCommitOcr" onclick="handleCommitOcrBatch()" class="px-5 py-2.5 rounded-xl qyona-gradient text-white text-xs font-bold shadow">
+            <i class="fa-solid fa-check-double mr-1"></i> Simpan Semua Item ke Sheet
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================================
+       MODAL 3: PENGAJUAN DANA TAMBAHAN (US-6 AC2)
+       ======================================================================== -->
+  <div id="modalFundRequest" class="fixed inset-0 z-50 hidden bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-slate-900 rounded-3xl max-w-md w-full p-6 border border-slate-200 dark:border-slate-800 shadow-2xl animate-fade-in">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="font-extrabold text-base text-slate-900 dark:text-white">Ajukan Permintaan Dana Tambahan</h3>
+        <button onclick="closeModal('modalFundRequest')" class="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-500 flex items-center justify-center">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+      <form onsubmit="submitFundRequestForm(event)" class="space-y-4">
+        <div>
+          <label class="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Nominal Dana yang Diajukan (Rp)</label>
+          <input id="reqFormAmount" type="number" required min="5000" placeholder="100000"
+            class="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-base font-extrabold">
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Alasan / Keperluan</label>
+          <textarea id="reqFormReason" rows="3" required placeholder="Contoh: Beli buku latihan ujian & alat gambar sekolah"
+            class="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs"></textarea>
+        </div>
+        <div class="flex justify-end gap-2">
+          <button type="button" onclick="closeModal('modalFundRequest')" class="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-bold">Batal</button>
+          <button type="submit" class="px-5 py-2 rounded-xl bg-purple-600 text-white text-xs font-bold shadow">Kirim ke Admin</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ========================================================================
+       MODAL 4: TAMBAH TAGIHAN RUTIN / DOMPET / UNDANG ANGGOTA KELUARGA
+       ======================================================================== -->
+  <div id="modalGenericAdmin" class="fixed inset-0 z-50 hidden bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-slate-900 rounded-3xl max-w-md w-full p-6 border border-slate-200 dark:border-slate-800 shadow-2xl animate-fade-in">
+      <div class="flex items-center justify-between mb-4">
+        <h3 id="modalGenericTitle" class="font-extrabold text-base text-slate-900 dark:text-white">Kelola Data</h3>
+        <button onclick="closeModal('modalGenericAdmin')" class="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-500 flex items-center justify-center">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+      <div id="modalGenericBody"></div>
+    </div>
+  </div>
+
+  <?!= include('JavaScript'); ?>
+</body>
+</html>
