@@ -339,6 +339,7 @@
 
     const views = {
       dashboard: document.getElementById('viewDashboard'),
+      goals: document.getElementById('viewGoals'),
       insight: document.getElementById('viewInsight'),
       bills: document.getElementById('viewBills'),
       manage: document.getElementById('viewManage')
@@ -405,6 +406,7 @@
       renderCharts(data);
       populateFilterAndFormSelects(data);
       renderTransactionList();
+      renderGoalsView(data);
       renderInsightsView(data);
       renderBillsAndApprovalsView(data);
       if (data.currentUser.role === 'Admin') {
@@ -740,7 +742,7 @@
     `;
   }
 
-  function appendChatMessage(sender, htmlText) {
+  function appendChatMessage(sender, htmlText, inlineButtons = []) {
     const container = document.getElementById('chatMessagesContainer');
     if (!container) return;
     const msgDiv = document.createElement('div');
@@ -748,6 +750,26 @@
       .replace(/\*([^*]+)\*/g, '<b>$1</b>')
       .replace(/_([^_]+)_/g, '<i>$1</i>')
       .replace(/\n/g, '<br>');
+
+    let inlineBtnsHtml = '';
+    if (Array.isArray(inlineButtons) && inlineButtons.length > 0) {
+      inlineBtnsHtml = `
+        <div class="mt-2.5 pt-2.5 border-t border-slate-100 dark:border-slate-700/70 flex flex-wrap gap-1.5">
+          ${inlineButtons.map(btn => `
+            <button type="button" onclick="${btn.onClick}"
+              class="px-2.5 py-1.5 rounded-xl text-[11px] font-bold transition flex items-center gap-1 shadow-2xs ${
+                btn.variant === 'danger'
+                  ? 'bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-300 border border-rose-200 dark:border-rose-800 hover:bg-rose-600 hover:text-white'
+                  : btn.variant === 'primary'
+                    ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+                    : 'bg-slate-100 dark:bg-slate-700/80 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-600 hover:border-emerald-500'
+              }">
+              ${btn.label}
+            </button>
+          `).join('')}
+        </div>
+      `;
+    }
 
     if (sender === 'user') {
       msgDiv.className = 'flex justify-end animate-fade-in';
@@ -763,7 +785,8 @@
           <i class="fa-solid fa-robot"></i>
         </div>
         <div class="chat-bubble-bot bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 p-3.5 text-xs leading-relaxed text-slate-700 dark:text-slate-200 shadow-xs max-w-[88%]">
-          ${formattedHtml}
+          <div>${formattedHtml}</div>
+          ${inlineBtnsHtml}
         </div>
       `;
     }
@@ -786,7 +809,31 @@
 
     try {
       const res = await callGasBackend('processChatbotMessage', APP_STATE.currentUser.id, messageText, forcedCategory);
-      appendChatMessage('bot', res.reply);
+
+      // Buat tombol Inline Interaktif 2-Arah seperti Telegram Inline Keyboard (Upgrade v2.0 Fitur #2)
+      const inlineButtons = [];
+      if (res.status === 'SAVED' && res.transactionId) {
+        if (APP_STATE.currentUser?.role === 'Admin') {
+          inlineButtons.push({
+            label: '🔄 Ubah Kategori',
+            variant: 'secondary',
+            onClick: `openEditTransactionModal('${res.transactionId}')`
+          });
+        }
+        inlineButtons.push({
+          label: '❌ Batalkan Transaksi',
+          variant: 'danger',
+          onClick: `handleInlineCancelTrx('${res.transactionId}')`
+        });
+      } else if (res.status === 'FUND_REQUEST_CREATED' && res.requestId) {
+        inlineButtons.push({
+          label: '📋 Lihat Status Approval',
+          variant: 'secondary',
+          onClick: `switchMainTab('bills')`
+        });
+      }
+
+      appendChatMessage('bot', res.reply, inlineButtons);
 
       // US-1 AC2: Tampilkan pilihan konfirmasi kategori jika kategori belum spesifik
       if (res.status === 'NEEDS_CONFIRMATION') {
@@ -808,6 +855,17 @@
       }
     } catch (err) {
       appendChatMessage('bot', `⚠️ Maaf, terjadi kendala saat memproses pesan: ${err.message}`);
+    }
+  }
+
+  async function handleInlineCancelTrx(trxId) {
+    try {
+      const res = await callGasBackend('deleteTransaction', APP_STATE.currentUser.id, trxId);
+      appendChatMessage('bot', `🗑️ *Transaksi ${trxId} Dibatalkan!* Saldo dompet telah dikembalikan secara otomatis.`);
+      showToast(res.message, 'info');
+      await refreshDashboardData(true);
+    } catch (err) {
+      showToast(err.message, 'error');
     }
   }
 
@@ -1582,6 +1640,309 @@
 
   /**
    * ============================================================================
+   * UPGRADE v2.0 FITUR #1: KANTONG IMPIAN & TABUNGAN TARGET KELUARGA + BONUS MATCHING
+   * ============================================================================
+   */
+  function renderGoalsView(data) {
+    const goals = data.savingsGoals || [];
+    const totalSavedEl = document.getElementById('valGoalsTotalSaved');
+    const totalTargetEl = document.getElementById('valGoalsTotalTarget');
+    if (totalSavedEl) totalSavedEl.textContent = formatRp(data.summary?.totalGoalsSaved || 0);
+    if (totalTargetEl) totalTargetEl.textContent = formatRp(data.summary?.totalGoalsTarget || 0);
+
+    const grid = document.getElementById('goalsGridContainer');
+    if (!grid) return;
+
+    if (goals.length === 0) {
+      grid.innerHTML = `
+        <div class="col-span-2 p-8 text-center text-slate-400 text-xs bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800">
+          Belum ada Kantong Impian yang dibuat. Klik tombol "Buat Kantong Impian" di atas!
+        </div>
+      `;
+      return;
+    }
+
+    grid.innerHTML = goals.map(g => {
+      const pct = Math.min(100, Number(g.percentage || 0));
+      const isChildGoal = g.ownerId !== 'ALL';
+      const matchingBadge = Number(g.matchingRate) > 0
+        ? `<span class="px-2.5 py-0.5 rounded-full bg-purple-500/15 text-purple-700 dark:text-purple-300 text-[10px] font-extrabold">🎁 Bonus Ortu +${g.matchingRate}%</span>`
+        : `<span class="px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-[10px] font-extrabold">Target Keluarga</span>`;
+
+      const statusBadge = g.isCompleted
+        ? `<span class="px-2.5 py-0.5 rounded-full bg-emerald-600 text-white text-[10px] font-extrabold">🎉 Tercapai 100%!</span>`
+        : `<span class="text-xs font-extrabold text-slate-900 dark:text-white">${pct}%</span>`;
+
+      return `
+        <div class="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/85 dark:border-slate-800 shadow-sm flex flex-col justify-between gap-4">
+          <div class="space-y-3">
+            <div class="flex items-start justify-between gap-2">
+              <div class="flex items-center gap-3">
+                <div class="w-11 h-11 rounded-2xl text-white flex items-center justify-center text-base shadow-sm shrink-0" style="background-color:${g.color || '#10B981'}">
+                  <i class="fa-solid ${g.icon || 'fa-piggy-bank'}"></i>
+                </div>
+                <div>
+                  <div class="flex flex-wrap items-center gap-1.5">
+                    <h4 class="font-extrabold text-sm text-slate-900 dark:text-white">${g.name}</h4>
+                    ${matchingBadge}
+                  </div>
+                  <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                    Pemilik: <b>${g.ownerName}</b> • Target Tanggal: <b>${g.deadline || '-'}</b>
+                  </p>
+                </div>
+              </div>
+              ${statusBadge}
+            </div>
+
+            <div>
+              <div class="flex items-baseline justify-between text-xs mb-1.5">
+                <span class="font-extrabold text-base text-emerald-600 dark:text-emerald-400">${formatRp(g.savedAmount)}</span>
+                <span class="text-slate-400 text-[11px]">dari target <b class="text-slate-700 dark:text-slate-200">${formatRp(g.targetAmount)}</b></span>
+              </div>
+              <div class="w-full h-3 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+                <div class="h-full rounded-full progress-fill" style="width:${pct}%; background-color:${g.color || '#10B981'}"></div>
+              </div>
+            </div>
+
+            <div class="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60 text-[11px] text-slate-600 dark:text-slate-300 flex items-start gap-2">
+              <i class="fa-solid fa-wand-magic-sparkles text-teal-600 dark:text-emerald-400 mt-0.5"></i>
+              <div>
+                <b>Estimasi AI Qyona:</b> ${
+                  g.isCompleted
+                    ? 'Selamat! Target tabungan ini sudah terkumpul penuh.'
+                    : `Sisa <b>${formatRp(g.remaining)}</b> lagi. Jika rutin menyisihkan <b>${formatRp(g.monthlySuggestion)}/bulan</b>, target tercapai tepat waktu!`
+                }
+                ${isChildGoal && Number(g.matchingRate) > 0 ? `<div class="mt-1 text-purple-600 dark:text-purple-300 font-semibold">✨ Setiap kamu menabung Rp 20.000, Ayah/Bunda otomatis menambah bonus Rp ${formatRp(Math.round(20000 * (g.matchingRate / 100))).replace('Rp ', '')}!</div>` : ''}
+              </div>
+            </div>
+          </div>
+
+          <div class="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800">
+            <span class="text-[11px] text-slate-400 font-mono">${g.id}</span>
+            <button type="button" onclick="openContributeGoalModal('${g.id}')"
+              class="px-4 py-2 rounded-xl qyona-gradient text-white text-xs font-extrabold shadow-xs hover:opacity-95 transition flex items-center gap-1.5">
+              <i class="fa-solid fa-coins"></i>
+              <span>Setor Tabungan${Number(g.matchingRate) > 0 && APP_STATE.currentUser?.role !== 'Admin' ? ` (+Bonus ${g.matchingRate}%)` : ''}</span>
+            </button>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  function openAddGoalModal() {
+    const isAdmin = APP_STATE.currentUser?.role === 'Admin';
+    const members = APP_STATE.bootstrapData?.familyMembers || [];
+    const ownerOptions = isAdmin
+      ? `<option value="ALL">Seluruh Keluarga (Sinking Fund Rumah)</option>` +
+        members.filter(m => m.role === 'Member').map(m => `<option value="${m.id}">Celengan Anak: ${m.name}</option>`).join('')
+      : `<option value="${APP_STATE.currentUser.id}">Celengan Pribadiku (${APP_STATE.currentUser.name})</option>`;
+
+    document.getElementById('modalGenericTitle').textContent = 'Buat Kantong Impian / Target Tabungan Baru';
+    document.getElementById('modalGenericBody').innerHTML = `
+      <form onsubmit="submitAddGoal(event)" class="space-y-3.5">
+        <div>
+          <label class="block text-xs font-bold mb-1">Nama Kantong Impian</label>
+          <input id="newGoalName" required placeholder="Contoh: Liburan Keluarga / Sepeda Baru Raka" class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold">
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="block text-xs font-bold mb-1">Target Nominal (Rp)</label>
+            <input id="newGoalTarget" type="number" required value="3000000" min="50000" step="50000" class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-extrabold">
+          </div>
+          <div>
+            <label class="block text-xs font-bold mb-1">Saldo Awal Terkumpul (Rp)</label>
+            <input id="newGoalSaved" type="number" required value="0" min="0" class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold">
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="block text-xs font-bold mb-1">Target Tanggal Tercapai</label>
+            <input id="newGoalDeadline" type="date" required value="2026-12-31" class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold">
+          </div>
+          <div>
+            <label class="block text-xs font-bold mb-1">Bonus Matching Ortu (%)</label>
+            <select id="newGoalMatching" ${!isAdmin ? 'disabled' : ''} class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold">
+              <option value="0">0% (Tanpa Bonus)</option>
+              <option value="25">25% Bonus Ortu</option>
+              <option value="50" selected>50% Bonus Ortu</option>
+              <option value="100">100% Lipat Ganda (1:1)</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <label class="block text-xs font-bold mb-1">Pemilik Kantong</label>
+          <select id="newGoalOwner" class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold">
+            ${ownerOptions}
+          </select>
+        </div>
+        <div class="flex justify-end gap-2 pt-2">
+          <button type="button" onclick="closeModal('modalGenericAdmin')" class="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-bold">Batal</button>
+          <button type="submit" class="px-4 py-2 rounded-xl qyona-gradient text-white text-xs font-bold">Simpan Kantong Impian</button>
+        </div>
+      </form>
+    `;
+    document.getElementById('modalGenericAdmin').classList.remove('hidden');
+  }
+
+  async function submitAddGoal(e) {
+    e.preventDefault();
+    try {
+      const ownerId = document.getElementById('newGoalOwner').value;
+      const matchingRate = ownerId === 'ALL' ? 0 : Number(document.getElementById('newGoalMatching').value || 50);
+      const res = await callGasBackend('saveSavingsGoal', APP_STATE.currentUser.id, {
+        name: document.getElementById('newGoalName').value,
+        targetAmount: Number(document.getElementById('newGoalTarget').value),
+        savedAmount: Number(document.getElementById('newGoalSaved').value || 0),
+        deadline: document.getElementById('newGoalDeadline').value,
+        ownerId: ownerId,
+        matchingRate: matchingRate,
+        icon: ownerId === 'ALL' ? 'fa-piggy-bank' : 'fa-gift',
+        color: ownerId === 'ALL' ? '#10B981' : '#A855F7'
+      });
+      closeModal('modalGenericAdmin');
+      showToast(res.message, 'success');
+      await refreshDashboardData(true);
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  }
+
+  function openContributeGoalModal(goalId) {
+    const g = (APP_STATE.bootstrapData?.savingsGoals || []).find(x => x.id === goalId);
+    if (!g) return;
+    const isAdmin = APP_STATE.currentUser?.role === 'Admin';
+    const wallets = APP_STATE.bootstrapData?.wallets || [];
+    const walletOptions = wallets.map(w => `<option value="${w.id}">${w.name} (${formatRp(w.currentBalance)})</option>`).join('');
+
+    const bonusNotice = (!isAdmin && Number(g.matchingRate) > 0)
+      ? `<div class="p-3 rounded-xl bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800 text-xs text-purple-800 dark:text-purple-200 font-semibold">
+           🎁 <b>Gamifikasi Bonus Matching Aktif (+${g.matchingRate}%):</b> Setiap Rupiah yang kamu tabung ke <b>${g.name}</b> akan langsung ditambah bonus ${g.matchingRate}% oleh Ayah & Bunda!
+         </div>`
+      : '';
+
+    document.getElementById('modalGenericTitle').textContent = `Setor Tabungan: ${g.name}`;
+    document.getElementById('modalGenericBody').innerHTML = `
+      <form onsubmit="submitContributeGoal(event)" class="space-y-3.5">
+        <input type="hidden" id="contribGoalId" value="${g.id}">
+        ${bonusNotice}
+        <div>
+          <label class="block text-xs font-bold mb-1">Nominal Setoran Tabungan (Rp)</label>
+          <input id="contribAmount" type="number" required min="5000" step="5000" value="${isAdmin ? 250000 : 25000}"
+            class="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-extrabold">
+        </div>
+        <div>
+          <label class="block text-xs font-bold mb-1">Ambil dari Sumber Dompet</label>
+          <select id="contribWalletId" class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold">
+            ${walletOptions}
+          </select>
+        </div>
+        <div class="flex justify-end gap-2 pt-2">
+          <button type="button" onclick="closeModal('modalGenericAdmin')" class="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-bold">Batal</button>
+          <button type="submit" class="px-4 py-2 rounded-xl qyona-gradient text-white text-xs font-bold">Setor Sekarang</button>
+        </div>
+      </form>
+    `;
+    document.getElementById('modalGenericAdmin').classList.remove('hidden');
+  }
+
+  async function submitContributeGoal(e) {
+    e.preventDefault();
+    const goalId = document.getElementById('contribGoalId').value;
+    const amount = Number(document.getElementById('contribAmount').value);
+    const walletId = document.getElementById('contribWalletId').value;
+    try {
+      const res = await callGasBackend('contributeToGoal', APP_STATE.currentUser.id, {
+        goalId,
+        amount,
+        walletId
+      });
+      closeModal('modalGenericAdmin');
+      showToast(res.message, 'success');
+      appendChatMessage('bot', `🐷 *Setoran Kantong Impian Berhasil!*\n${res.message}`);
+      await refreshDashboardData(true);
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  }
+
+  /**
+   * ============================================================================
+   * UPGRADE v2.0 FITUR #2: WEBHOOK TELEGRAM 1-KLIK & SIMULASI BOT INTERAKTIF 2 ARAH
+   * ============================================================================
+   */
+  async function handleRegisterTelegramWebhook() {
+    try {
+      const res = await callGasBackend('registerTelegramWebhook', APP_STATE.currentUser.id, GAS_WEB_APP_URL);
+      showToast(res.message, 'success');
+      appendChatMessage('bot', `🔗 *Webhook Telegram Terhubung!*\n${res.message}\nURL Endpoint: \`${res.webhookUrl || GAS_WEB_APP_URL}\``);
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  }
+
+  async function handleTestInteractiveBot() {
+    try {
+      const res = await callGasBackend('testInteractiveBotNotification', APP_STATE.currentUser.id);
+      showToast(res.message, 'info');
+
+      // Tampilkan simulasi kartu interaktif Telegram / WhatsApp dengan tombol Inline langsung di Chatbot Web
+      const pendingReq = (APP_STATE.bootstrapData?.fundRequests || []).find(r => r.status === 'Menunggu Approval');
+      const reqId = pendingReq ? pendingReq.id : 'REQ-01';
+      const reqMember = pendingReq ? pendingReq.memberName : 'Kakak Raka (Anak)';
+      const reqAmount = pendingReq ? pendingReq.amount : 125000;
+      const reqReason = pendingReq ? pendingReq.reason : 'Beli buku latihan Olimpiade Sains';
+
+      const inlineButtons = [
+        {
+          label: `✅ Setujui ${formatRp(reqAmount)}`,
+          variant: 'primary',
+          onClick: `handleInlineApproveReq('${reqId}', 'APPROVE')`
+        },
+        {
+          label: `❌ Tolak ${reqId}`,
+          variant: 'danger',
+          onClick: `handleInlineApproveReq('${reqId}', 'REJECT')`
+        },
+        {
+          label: '🐷 Lihat Kantong Impian',
+          variant: 'secondary',
+          onClick: `switchMainTab('goals')`
+        }
+      ];
+
+      appendChatMessage(
+        'bot',
+        `📲 *Simulasi Bot Interaktif 2-Arah (Telegram Inline Keyboard & WA Quick Reply)*\n\n` +
+        ` Permintaan Dana Anak: *${reqId}*\n` +
+        `• *Anak:* ${reqMember}\n` +
+        `• *Nominal:* ${formatRp(reqAmount)}\n` +
+        `• *Alasan:* _"${reqReason}"_\n\n` +
+        `Klik tombol *Inline* di bawah ini (atau balas \`SETUJU ${reqId}\` di WhatsApp):`,
+        inlineButtons
+      );
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  }
+
+  async function handleInlineApproveReq(reqId, decision) {
+    if (APP_STATE.currentUser?.role !== 'Admin') {
+      showToast('Hanya Admin (Ayah/Bunda) yang dapat menyetujui pencairan dana.', 'warning');
+      return;
+    }
+    try {
+      const res = await callGasBackend('processFundRequestApproval', APP_STATE.currentUser.id, reqId, decision);
+      appendChatMessage('bot', `⚡ *Callback Inline Diproses:* ${res.message}`);
+      showToast(res.message, decision === 'APPROVE' ? 'success' : 'info');
+      await refreshDashboardData(true);
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  }
+
+  /**
+   * ============================================================================
    * EKSPOR LAPORAN PDF BULANAN & CSV/EXCEL (US-7)
    * ============================================================================
    */
@@ -1700,6 +2061,13 @@
       fundRequests: [
         { id: 'REQ-01', date: `${ym}-18 14:00`, memberId: 'USR-03', memberName: 'Kakak Raka (Anak)', amount: 125000, reason: 'Beli buku latihan Olimpiade Sains & alat tulis praktikum', status: 'Menunggu Approval', processedBy: '' },
         { id: 'REQ-02', date: `${ym}-18 16:30`, memberId: 'USR-04', memberName: 'Adik Nayla (Anak)', amount: 65000, reason: 'Iuran karya wisata kelas dan beli cat air baru', status: 'Menunggu Approval', processedBy: '' }
+      ],
+      goals: [
+        { id: 'GOL-01', name: 'Dana Darurat Keluarga (6x Bulanan)', targetAmount: 30000000, savedAmount: 18500000, deadline: `${now.getFullYear()}-12-31`, ownerId: 'ALL', matchingRate: 0, icon: 'fa-shield-heart', color: '#10B981', status: 'Aktif' },
+        { id: 'GOL-02', name: 'Liburan Akhir Tahun ke Yogyakarta', targetAmount: 8500000, savedAmount: 5200000, deadline: `${now.getFullYear()}-12-15`, ownerId: 'ALL', matchingRate: 0, icon: 'fa-plane-departure', color: '#3B82F6', status: 'Aktif' },
+        { id: 'GOL-03', name: 'Tabungan Kurban & Hari Raya', targetAmount: 6500000, savedAmount: 4100000, deadline: `${now.getFullYear() + 1}-05-20`, ownerId: 'ALL', matchingRate: 0, icon: 'fa-mosque', color: '#F97316', status: 'Aktif' },
+        { id: 'GOL-04', name: 'Celengan Raka: Sepeda Lipat & Buku Sains', targetAmount: 1500000, savedAmount: 675000, deadline: `${now.getFullYear()}-11-30`, ownerId: 'USR-03', matchingRate: 50, icon: 'fa-bicycle', color: '#A855F7', status: 'Aktif' },
+        { id: 'GOL-05', name: 'Celengan Nayla: Set Lukis Kanvas Pro', targetAmount: 600000, savedAmount: 360000, deadline: `${now.getFullYear()}-11-15`, ownerId: 'USR-04', matchingRate: 100, icon: 'fa-palette', color: '#EC4899', status: 'Aktif' }
       ],
       insights: [
         {
@@ -1868,6 +2236,22 @@
           ? DB.wallets.reduce((s, w) => s + w.currentBalance, 0)
           : Math.max(0, user.allowanceQuota - totalExpense);
 
+        const visibleGoals = DB.goals
+          .filter(g => isAdmin || g.ownerId === 'ALL' || g.ownerId === user.id)
+          .map(g => {
+            const pct = g.targetAmount > 0 ? Math.min(100, Math.round((g.savedAmount / g.targetAmount) * 100)) : 0;
+            const remaining = Math.max(0, g.targetAmount - g.savedAmount);
+            const ownerObj = g.ownerId === 'ALL' ? null : DB.members.find(m => m.id === g.ownerId);
+            return {
+              ...g,
+              ownerName: ownerObj ? ownerObj.name : 'Keluarga Qyona',
+              percentage: pct,
+              remaining,
+              monthlySuggestion: remaining > 0 ? Math.ceil(remaining / 4) : 0,
+              isCompleted: g.savedAmount >= g.targetAmount
+            };
+          });
+
         return {
           serverTime: new Date().toLocaleString('id-ID'),
           currentMonthYear: targetYM,
@@ -1879,7 +2263,9 @@
             totalExpense,
             totalBudgetLimit,
             budgetUsedPercent: totalBudgetLimit > 0 ? Math.round((totalExpense / totalBudgetLimit) * 100) : 0,
-            transactionCount: currTrx.length
+            transactionCount: currTrx.length,
+            totalGoalsSaved: visibleGoals.reduce((s, g) => s + g.savedAmount, 0),
+            totalGoalsTarget: visibleGoals.reduce((s, g) => s + g.targetAmount, 0)
           },
           categories: visibleCats,
           categoryBreakdown,
@@ -1887,6 +2273,7 @@
           transactions: currTrx,
           bills: isAdmin ? DB.bills : [],
           fundRequests: DB.fundRequests.filter(r => isAdmin || r.memberId === user.id),
+          savingsGoals: visibleGoals,
           insights: DB.insights.filter(i => isAdmin || i.type === 'Harian' || i.memberId === user.id),
           familyMembers: isAdmin ? DB.members : [user],
           systemConfig: isAdmin ? { inviteCode: DB.inviteCode } : null
@@ -1985,9 +2372,10 @@
         // Cek request dana anak
         if (!isAdmin && /(minta|ajukan|request|butuh|tambah)\s+(uang|dana|jajan)/i.test(text)) {
           const nom = extractFirstAmountLocal(text) || 50000;
-          this.createFundRequest(memberId, { amount: nom, reason: text });
+          const reqRes = this.createFundRequest(memberId, { amount: nom, reason: text });
           return {
             status: 'FUND_REQUEST_CREATED',
+            requestId: reqRes.requestId,
             reply: `📩 Permintaan dana tambahan sebesar *${formatRp(nom)}* untuk _"${text}"_ sudah dikirim ke Ayah & Bunda untuk disetujui!`
           };
         }
@@ -2027,6 +2415,7 @@
 
         return {
           status: 'SAVED',
+          transactionId: saved.transactionId,
           reply: `✅ *Tercatat Otomatis!*\n• *Item:* ${text}\n• *Nominal:* ${formatRp(amount)}\n• *Kategori:* ${saved.category}\n• *Oleh:* ${user.name}`
         };
       },
@@ -2121,8 +2510,9 @@
 
       createFundRequest(memberId, payload) {
         const u = DB.members.find(m => m.id === memberId);
+        const newId = 'REQ-0' + (DB.fundRequests.length + 1);
         DB.fundRequests.unshift({
-          id: 'REQ-0' + (DB.fundRequests.length + 1),
+          id: newId,
           date: new Date().toISOString().slice(0, 16).replace('T', ' '),
           memberId: u.id,
           memberName: u.name,
@@ -2131,7 +2521,7 @@
           status: 'Menunggu Approval',
           processedBy: ''
         });
-        return { success: true, message: `Permintaan dana ${formatRp(payload.amount)} berhasil dikirim ke Admin.` };
+        return { success: true, requestId: newId, message: `Permintaan dana ${formatRp(payload.amount)} berhasil dikirim ke Admin.` };
       },
 
       processFundRequestApproval(adminId, reqId, decision) {
@@ -2151,7 +2541,78 @@
             });
           }
         }
-        return { success: true, message: `Pengajuan dana telah diproses (${req?.status}).` };
+        return { success: true, message: `Pengajuan dana ${reqId} telah diproses (${req?.status}).` };
+      },
+
+      saveSavingsGoal(memberId, payload) {
+        const newId = 'GOL-0' + (DB.goals.length + 1);
+        DB.goals.push({
+          id: newId,
+          name: payload.name,
+          targetAmount: Number(payload.targetAmount || 1000000),
+          savedAmount: Number(payload.savedAmount || 0),
+          deadline: payload.deadline || `${now.getFullYear()}-12-31`,
+          ownerId: payload.ownerId || 'ALL',
+          matchingRate: Number(payload.matchingRate || 0),
+          icon: payload.icon || 'fa-piggy-bank',
+          color: payload.color || '#10B981',
+          status: 'Aktif'
+        });
+        return { success: true, goalId: newId, message: `Kantong Impian "${payload.name}" berhasil ditambahkan!` };
+      },
+
+      contributeToGoal(memberId, payload) {
+        const user = DB.members.find(m => m.id === memberId);
+        const g = DB.goals.find(x => x.id === payload.goalId);
+        if (!g) throw new Error('Kantong Impian tidak ditemukan.');
+        const amount = Math.abs(Number(payload.amount || 0));
+        let bonus = 0;
+        if (user.role !== 'Admin' && g.matchingRate > 0) {
+          bonus = Math.round(amount * (g.matchingRate / 100));
+        }
+        g.savedAmount += amount + bonus;
+        if (g.savedAmount >= g.targetAmount) g.status = 'Tercapai';
+
+        this.saveTransaction(memberId, {
+          type: 'Keluar',
+          amount: amount,
+          category: user.role === 'Admin' ? 'Hiburan & Keluarga' : 'Jajan/Anak',
+          description: `Setor Tabungan Impian: ${g.name}`,
+          walletId: payload.walletId || (user.role === 'Admin' ? 'WLT-02' : 'WLT-05'),
+          source: 'Form'
+        });
+        if (bonus > 0) {
+          this.saveTransaction('USR-01', {
+            type: 'Keluar',
+            amount: bonus,
+            category: 'Pendidikan & Les',
+            description: `[Bonus Matching Ortu ${g.matchingRate}%] Tabungan ${user.name} (${g.name})`,
+            walletId: 'WLT-01',
+            source: 'Form'
+          });
+        }
+        const bonusNote = bonus > 0 ? ` + Bonus Matching Orang Tua ${formatRp(bonus)} (${g.matchingRate}%)!` : '!';
+        return {
+          success: true,
+          newSaved: g.savedAmount,
+          parentBonus: bonus,
+          message: `Berhasil menabung ${formatRp(amount)} ke "${g.name}"${bonusNote}`
+        };
+      },
+
+      registerTelegramWebhook(adminId, webAppUrl) {
+        return {
+          success: true,
+          webhookUrl: webAppUrl,
+          message: 'Simulasi Webhook Telegram siap! Pastikan TELEGRAM_BOT_TOKEN sudah diisi di PropertiesService untuk koneksi live ke server Telegram.'
+        };
+      },
+
+      testInteractiveBotNotification() {
+        return {
+          success: true,
+          message: 'Notifikasi interaktif 2-arah dengan tombol Inline berhasil disimulasikan di panel Chatbot!'
+        };
       },
 
       updateCategoryBudget(adminId, catName, newLimit) {

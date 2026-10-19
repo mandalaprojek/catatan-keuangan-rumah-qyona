@@ -30,7 +30,8 @@ const SHEET_NAMES = {
   DOMPET: 'Dompet / Sumber Dana',
   TAGIHAN: 'Tagihan Rutin',
   INSIGHT: 'Riwayat Chat & AI Insight',
-  PENGAJUAN: 'Pengajuan Dana'
+  PENGAJUAN: 'Pengajuan Dana',
+  GOALS: 'Target Tabungan & Impian'
 };
 
 /**
@@ -82,7 +83,11 @@ function executeAllowedRpc(fnName, args) {
     saveScriptConfigs: saveScriptConfigs,
     setupAutomatedTriggers: setupAutomatedTriggers,
     exportMonthlyCsv: exportMonthlyCsv,
-    generateMonthlyPdfReport: generateMonthlyPdfReport
+    generateMonthlyPdfReport: generateMonthlyPdfReport,
+    saveSavingsGoal: saveSavingsGoal,
+    contributeToGoal: contributeToGoal,
+    registerTelegramWebhook: registerTelegramWebhook,
+    testInteractiveBotNotification: testInteractiveBotNotification
   };
   if (!allowed[fnName]) {
     throw new Error('Fungsi RPC tidak terdaftar: ' + fnName);
@@ -339,6 +344,22 @@ function initDatabaseIfNeeded() {
       ];
       shPengajuan.getRange(2, 1, seedRequests.length, seedRequests[0].length).setValues(seedRequests);
       styleHeaderRow(shPengajuan, 8);
+    }
+
+    // 8. Sheet Target Tabungan & Impian Keluarga (Upgrade v2.0: Family Goals & Sinking Funds + Bonus Matching Anak)
+    let shGoals = ss.getSheetByName(SHEET_NAMES.GOALS);
+    if (!shGoals) {
+      shGoals = ss.insertSheet(SHEET_NAMES.GOALS);
+      shGoals.appendRow(['ID Goal', 'Nama Target Impian', 'Nominal Target', 'Terkumpul Saat Ini', 'Tenggat Waktu', 'ID Pemilik', 'Ikon', 'Warna', 'Rasio Bonus Matching Ortu (%)', 'Status']);
+      const seedGoals = [
+        ['GOL-01', 'Dana Darurat Keluarga (6x Pengeluaran)', 25000000, 14500000, '2027-06-30', 'ALL', 'fa-shield-heart', '#10B981', 0, 'Aktif'],
+        ['GOL-02', 'Liburan Keluarga ke Yogyakarta & Bali', 12000000, 6800000, '2026-12-20', 'ALL', 'fa-plane-departure', '#0EA5E9', 0, 'Aktif'],
+        ['GOL-03', 'Tabungan Kurban & Amal Keluarga', 4500000, 2900000, '2027-05-15', 'ALL', 'fa-hand-holding-heart', '#F59E0B', 0, 'Aktif'],
+        ['GOL-04', 'Celengan Sepeda Lipat Kakak Raka', 1800000, 750000, '2026-12-31', 'USR-03', 'fa-bicycle', '#8B5CF6', 100, 'Aktif'],
+        ['GOL-05', 'Celengan Tablet Gambar Adik Nayla', 1500000, 520000, '2027-01-31', 'USR-04', 'fa-palette', '#EC4899', 50, 'Aktif']
+      ];
+      shGoals.getRange(2, 1, seedGoals.length, seedGoals[0].length).setValues(seedGoals);
+      styleHeaderRow(shGoals, 10);
     }
 
     // Hapus Sheet1 default jika masih kosong dan ada sheet lain
@@ -726,6 +747,45 @@ function getAppBootstrapData(memberId, selectedMonthYear) {
   }
   insights.reverse();
 
+  // 8. Kantong Impian & Tabungan Target Keluarga (Upgrade v2.0)
+  const shGoals = ss.getSheetByName(SHEET_NAMES.GOALS);
+  const goalsData = shGoals ? shGoals.getDataRange().getValues() : [];
+  const savingsGoals = [];
+  const monthlySurplusEstimate = Math.max(500000, totalIncome - totalExpense);
+  for (let i = 1; i < goalsData.length; i++) {
+    const r = goalsData[i];
+    if (!r[0]) continue;
+    const ownerId = String(r[5] || 'ALL');
+    // RBAC: Anak melihat kantong miliknya sendiri atau kantong bersama keluarga ('ALL')
+    if (!isAdmin && ownerId !== 'ALL' && ownerId !== currentUser.id) continue;
+    const targetAmt = Number(r[2] || 0);
+    const currentAmt = Number(r[3] || 0);
+    const remainingAmt = Math.max(0, targetAmt - currentAmt);
+    const pct = targetAmt > 0 ? Math.min(100, Math.round((currentAmt / targetAmt) * 100)) : 0;
+    const matchRate = Number(r[8] || 0);
+    const ownerObj = ownerId === 'ALL' ? { name: 'Keluarga Qyona', avatar: '🏡' } : (memberMap[ownerId] || { name: ownerId, avatar: '🧒' });
+    const estMonths = remainingAmt === 0 ? 0 : Math.max(1, Math.ceil(remainingAmt / (ownerId === 'ALL' ? (monthlySurplusEstimate * 0.35) : 150000)));
+    savingsGoals.push({
+      id: String(r[0]),
+      title: String(r[1]),
+      targetAmount: targetAmt,
+      currentAmount: currentAmt,
+      remainingAmount: remainingAmt,
+      percentage: pct,
+      deadline: r[4] instanceof Date ? Utilities.formatDate(r[4], 'Asia/Jakarta', 'yyyy-MM-dd') : String(r[4] || ''),
+      ownerId: ownerId,
+      ownerName: ownerObj.name,
+      ownerAvatar: ownerObj.avatar,
+      icon: String(r[6] || 'fa-piggy-bank'),
+      color: String(r[7] || '#10B981'),
+      matchingRate: matchRate,
+      status: String(r[9] || 'Aktif'),
+      aiEtaText: remainingAmt === 0
+        ? '🎉 Target Impian Tercapai 100%!'
+        : `🤖 Estimasi AI: Tercapai dalam ~${estMonths} bulan (${matchRate > 0 ? `Bonus Ortu +${matchRate}% aktif` : 'Rutin menyisihkan surplus'})`
+    });
+  }
+
   // Hitung Saldo sesuai RBAC
   let totalBalance = 0;
   let visibleWallets = wallets;
@@ -761,7 +821,9 @@ function getAppBootstrapData(memberId, selectedMonthYear) {
       totalExpense: totalExpense,
       totalBudgetLimit: totalBudgetLimit,
       budgetUsedPercent: totalBudgetLimit > 0 ? Math.round((totalExpense / totalBudgetLimit) * 100) : 0,
-      transactionCount: currentMonthTrx.length
+      transactionCount: currentMonthTrx.length,
+      totalGoalsSaved: savingsGoals.reduce((acc, g) => acc + g.currentAmount, 0),
+      totalGoalsTarget: savingsGoals.reduce((acc, g) => acc + g.targetAmount, 0)
     },
     categories: categories,
     categoryBreakdown: categoryBreakdown,
@@ -770,6 +832,7 @@ function getAppBootstrapData(memberId, selectedMonthYear) {
     bills: bills,
     fundRequests: fundRequests.reverse(),
     insights: insights,
+    savingsGoals: savingsGoals,
     familyMembers: isAdmin ? allMembers.map(sanitizeMemberForClient) : [sanitizeMemberForClient(currentUser)],
     systemConfig: isAdmin ? {
       hasGeminiKey: Boolean(getConfig('GEMINI_API_KEY', '')),
@@ -1783,11 +1846,157 @@ function createFundRequest(memberId, payload) {
       ''
     ]);
 
+    // UPGRADE FITUR #2: Kirim Notifikasi Interaktif + Tombol Inline [Setujui] / [Tolak] ke Telegram & WA Admin
+    notifyAdminsInteractiveFundRequest(reqId, user.name, amount, String(payload.reason || 'Permintaan dana tambahan'));
+
     return {
       success: true,
       requestId: reqId,
-      message: `Permintaan dana Rp ${formatRupiahPlain(amount)} telah dikirim ke Admin untuk disetujui.`
+      message: `Permintaan dana Rp ${formatRupiahPlain(amount)} telah dikirim ke Admin (beserta tombol Approval langsung di Bot Telegram/WA Ayah & Bunda).`
     };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function notifyAdminsInteractiveFundRequest(reqId, requesterName, amount, reason) {
+  try {
+    const admins = getAllMembers().filter(m => m.role === 'Admin' && m.status === 'Aktif');
+    const msg = `🔔 *PENGAJUAN DANA BARU (${reqId})*\n\n` +
+      `👤 *Dari:* ${requesterName}\n` +
+      `💰 *Nominal:* Rp ${formatRupiahPlain(amount)}\n` +
+      `📝 *Keperluan:* _${reason}_\n\n` +
+      `Klik tombol di bawah ini untuk langsung menyetujui atau menolak dari chat:`;
+
+    const inlineKeyboard = {
+      inline_keyboard: [
+        [
+          { text: `✅ Setujui Rp ${formatRupiahPlain(amount)}`, callback_data: `REQ_APPROVE|${reqId}` },
+          { text: `❌ Tolak Pengajuan`, callback_data: `REQ_REJECT|${reqId}` }
+        ]
+      ]
+    };
+
+    admins.forEach(adm => {
+      if (adm.tgId) sendTelegramMessage(adm.tgId, msg, inlineKeyboard);
+      if (adm.waId) {
+        sendWhatsAppMessage(
+          adm.waId,
+          msg + `\n\nBalas cepat:\n• Ketik *SETUJU ${reqId}* untuk menyetujui\n• Ketik *TOLAK ${reqId}* untuk menolak`
+        );
+      }
+    });
+  } catch (e) {}
+}
+
+/**
+ * ============================================================================
+ * UPGRADE v2.0 FITUR #1: KANTONG IMPIAN & TABUNGAN TARGET KELUARGA (SINKING FUNDS)
+ * Mendukung Gamifikasi Celengan Anak + Bonus Matching Orang Tua Otomatis
+ * ============================================================================
+ */
+function saveSavingsGoal(memberId, goalPayload) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    const user = verifyMemberById(memberId);
+    if (!user) throw new Error('Pengguna tidak valid.');
+
+    const ss = getSpreadsheet();
+    const sh = ss.getSheetByName(SHEET_NAMES.GOALS);
+    const isAdmin = user.role === 'Admin';
+    const newId = 'GOL-' + Utilities.formatDate(new Date(), 'Asia/Jakarta', 'ddHHmmss');
+    const targetAmt = Math.max(10000, Number(goalPayload.targetAmount || 1000000));
+    const initSaved = Math.max(0, Number(goalPayload.currentAmount || 0));
+    const ownerId = isAdmin ? String(goalPayload.ownerId || 'ALL') : user.id;
+    const matchRate = isAdmin ? Number(goalPayload.matchingRate || 0) : 50;
+
+    sh.appendRow([
+      newId,
+      String(goalPayload.title || 'Kantong Impian Baru'),
+      targetAmt,
+      initSaved,
+      String(goalPayload.deadline || '2026-12-31'),
+      ownerId,
+      String(goalPayload.icon || 'fa-piggy-bank'),
+      String(goalPayload.color || '#10B981'),
+      matchRate,
+      'Aktif'
+    ]);
+
+    return {
+      success: true,
+      goalId: newId,
+      message: `Kantong Impian "${goalPayload.title}" (Target Rp ${formatRupiahPlain(targetAmt)}) berhasil dibuat!`
+    };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function contributeToGoal(memberId, payload) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try {
+    const user = verifyMemberById(memberId);
+    if (!user) throw new Error('Pengguna tidak terautentikasi.');
+
+    const amount = Math.abs(Number(payload.amount || 0));
+    if (amount <= 0) throw new Error('Nominal setoran tabungan harus lebih dari Rp 0.');
+
+    const ss = getSpreadsheet();
+    const sh = ss.getSheetByName(SHEET_NAMES.GOALS);
+    const data = sh.getDataRange().getValues();
+
+    for (let i = 1; i < data.length; i++) {
+      if (String(data[i][0]) === String(payload.goalId)) {
+        const goalTitle = String(data[i][1]);
+        const targetAmt = Number(data[i][2] || 0);
+        const currentAmt = Number(data[i][3] || 0);
+        const ownerId = String(data[i][5] || 'ALL');
+        const matchRate = Number(data[i][8] || 0);
+
+        // Hitung Bonus Matching Orang Tua jika ini tabungan Anak dan yang menyetor adalah Anak (atau diaktifkan)
+        let parentBonus = 0;
+        if (matchRate > 0 && (user.role !== 'Admin' || payload.applyParentMatch)) {
+          parentBonus = Math.round(amount * (matchRate / 100));
+        }
+
+        const totalAdded = amount + parentBonus;
+        const updatedAmt = currentAmt + totalAdded;
+        sh.getRange(i + 1, 4).setValue(updatedAmt);
+
+        if (updatedAmt >= targetAmt) {
+          sh.getRange(i + 1, 10).setValue('Tercapai 🎉');
+        }
+
+        // Catat sebagai alokasi tabungan di riwayat transaksi agar saldo dompet sinkron
+        const walletId = payload.walletId || (user.role === 'Admin' ? 'WLT-02' : 'WLT-05');
+        saveTransaction(user.id, {
+          type: 'Keluar',
+          amount: amount,
+          category: user.role === 'Admin' ? 'Pendidikan & Les' : 'Jajan/Anak',
+          description: `[Setor Tabungan Impian] ${goalTitle}${parentBonus > 0 ? ` (+Bonus Matching Ortu Rp ${formatRupiahPlain(parentBonus)})` : ''}`,
+          walletId: walletId,
+          source: 'Form'
+        });
+
+        const pct = targetAmt > 0 ? Math.min(100, Math.round((updatedAmt / targetAmt) * 100)) : 100;
+        const bonusMsg = parentBonus > 0
+          ? ` 🎁 Ditambah Bonus Matching Ortu (${matchRate}%) sebesar Rp ${formatRupiahPlain(parentBonus)}! Total masuk celengan: Rp ${formatRupiahPlain(totalAdded)}.`
+          : '';
+
+        return {
+          success: true,
+          goalId: payload.goalId,
+          updatedAmount: updatedAmt,
+          parentBonus: parentBonus,
+          percentage: pct,
+          message: `Berhasil menabung Rp ${formatRupiahPlain(amount)} ke "${goalTitle}" (${pct}%).${bonusMsg}`
+        };
+      }
+    }
+    throw new Error('Kantong Impian tidak ditemukan.');
   } finally {
     lock.releaseLock();
   }
@@ -1837,6 +2046,16 @@ function processFundRequestApproval(adminId, requestId, decision) {
             targetMemberId: requesterId,
             source: 'Form'
           });
+        }
+
+        // Kirim notifikasi balasan otomatis ke WA/Telegram Anak yang mengajukan
+        const childMember = verifyMemberById(requesterId);
+        if (childMember) {
+          const notifChild = decision === 'APPROVE'
+            ? `🎉 *Hore! Pengajuan Danamu Disetujui!*\nPermintaan dana *Rp ${formatRupiahPlain(amount)}* untuk _"${reason}"_ telah disetujui oleh *${admin.name}*. Kuota jajanmu sudah otomatis bertambah!`
+            : `ℹ️ Pengajuan dana *Rp ${formatRupiahPlain(amount)}* untuk _"${reason}"_ belum disetujui oleh *${admin.name}*.`;
+          if (childMember.tgId) sendTelegramMessage(childMember.tgId, notifChild);
+          if (childMember.waId) sendWhatsAppMessage(childMember.waId, notifChild);
         }
 
         return {
@@ -2084,7 +2303,7 @@ function generateMonthlyPdfReport(memberId, monthYear) {
 
 /**
  * ============================================================================
- * WEBHOOK BOT TELEGRAM & WHATSAPP CLOUD API / FONNTE (doPost)
+ * UPGRADE v2.0 FITUR #2: LIVE BOT TELEGRAM & WHATSAPP 2 ARAH + INLINE BUTTONS
  * ============================================================================
  */
 function doPost(e) {
@@ -2103,7 +2322,22 @@ function doPost(e) {
         .setMimeType(ContentService.MimeType.JSON);
     }
 
-    // A. Deteksi Webhook Telegram Bot API
+    // A1. Deteksi Klik Tombol Inline Keyboard Telegram (callback_query)
+    if (body.callback_query) {
+      const cb = body.callback_query;
+      const tgChatId = String(cb.from.id || cb.message?.chat?.id || '');
+      const member = verifyMemberByChatId(tgChatId);
+      if (!member) {
+        answerTelegramCallback(cb.id, 'Akses ditolak: ID belum terdaftar.');
+        return ContentService.createTextOutput('OK');
+      }
+      const responseText = handleInteractiveBotCallback(member, String(cb.data || ''));
+      answerTelegramCallback(cb.id, 'Diproses oleh Qyona AI!');
+      sendTelegramMessage(tgChatId, responseText);
+      return ContentService.createTextOutput('OK');
+    }
+
+    // A2. Deteksi Pesan Teks / Foto dari Webhook Telegram Bot API
     if (body.message || body.edited_message) {
       const msg = body.message || body.edited_message;
       const tgChatId = String(msg.chat.id);
@@ -2114,9 +2348,10 @@ function doPost(e) {
         return ContentService.createTextOutput('OK');
       }
 
-      const text = msg.text || msg.caption || '';
+      const text = (msg.text || msg.caption || '').trim();
       const result = processChatbotMessage(member.id, text);
-      sendTelegramMessage(tgChatId, result.reply);
+      const replyMarkup = buildTelegramInlineMarkupForChatResult(member, result);
+      sendTelegramMessage(tgChatId, result.reply, replyMarkup);
       return ContentService.createTextOutput('OK');
     }
 
@@ -2130,6 +2365,18 @@ function doPost(e) {
         sendWhatsAppMessage(waSender, `⛔ *Akses Keluarga Privat*\nNomor WhatsApp (${waSender}) belum terdaftar di Catatan Keuangan Rumah Qyona.`);
         return ContentService.createTextOutput('OK');
       }
+
+      // Cek apakah balas cepat perintah SETUJU REQ-xx atau TOLAK REQ-xx via WA
+      const upperWa = String(waText).trim().toUpperCase();
+      if (upperWa.startsWith('SETUJU REQ-') || upperWa.startsWith('TOLAK REQ-')) {
+        const parts = upperWa.split(/\s+/);
+        const decision = parts[0] === 'SETUJU' ? 'APPROVE' : 'REJECT';
+        const reqId = parts[1];
+        const apprRes = processFundRequestApproval(member.id, reqId, decision);
+        sendWhatsAppMessage(waSender, `✅ ${apprRes.message}`);
+        return ContentService.createTextOutput('OK');
+      }
+
       const result = processChatbotMessage(member.id, waText);
       sendWhatsAppMessage(waSender, result.reply);
       return ContentService.createTextOutput('OK');
@@ -2141,20 +2388,192 @@ function doPost(e) {
   }
 }
 
-function sendTelegramMessage(chatId, text) {
+/**
+ * Buat Tombol Inline Keyboard Telegram otomatis saat transaksi berhasil disimpan atau butuh konfirmasi
+ */
+function buildTelegramInlineMarkupForChatResult(member, result) {
+  if (!result) return null;
+  if (result.status === 'NEEDS_CONFIRMATION' && result.pendingMessage) {
+    const shortMsg = String(result.pendingMessage).slice(0, 32);
+    return {
+      inline_keyboard: [
+        [
+          { text: '🍲 Dapur', callback_data: `CAT_CONFIRM|Dapur & Makanan|${shortMsg}` },
+          { text: '⚡ Tagihan', callback_data: `CAT_CONFIRM|Tagihan & Utilitas|${shortMsg}` }
+        ],
+        [
+          { text: '⛽ Transport', callback_data: `CAT_CONFIRM|Transportasi & BBM|${shortMsg}` },
+          { text: '🍦 Jajan/Anak', callback_data: `CAT_CONFIRM|Jajan/Anak|${shortMsg}` }
+        ]
+      ]
+    };
+  }
+
+  if (result.status === 'SAVED' && result.transactionsCreated && result.transactionsCreated.length > 0) {
+    const firstTrx = result.transactionsCreated[0];
+    const buttons = [
+      [{ text: `❌ Batalkan / Hapus (${firstTrx.id})`, callback_data: `TRX_DELETE|${firstTrx.id}` }]
+    ];
+    if (member.role === 'Admin') {
+      buttons.unshift([
+        { text: '🔄 Ubah ke Dapur', callback_data: `TRX_CAT|${firstTrx.id}|Dapur & Makanan` },
+        { text: '🔄 Ubah ke Tagihan', callback_data: `TRX_CAT|${firstTrx.id}|Tagihan & Utilitas` }
+      ]);
+    }
+    return { inline_keyboard: buttons };
+  }
+  return null;
+}
+
+/**
+ * Eksekusi aksi ketika tombol Inline Keyboard di Telegram diklik oleh pengguna
+ */
+function handleInteractiveBotCallback(member, callbackData) {
+  const parts = String(callbackData || '').split('|');
+  const action = parts[0];
+
+  if (action === 'REQ_APPROVE' || action === 'REQ_REJECT') {
+    const reqId = parts[1];
+    const decision = action === 'REQ_APPROVE' ? 'APPROVE' : 'REJECT';
+    const res = processFundRequestApproval(member.id, reqId, decision);
+    return `✅ *Approval Selesai*\n${res.message}`;
+  }
+
+  if (action === 'TRX_DELETE') {
+    const trxId = parts[1];
+    const res = deleteTransaction(member.id, trxId);
+    return `🗑️ *Transaksi Dibatalkan*\n${res.message}`;
+  }
+
+  if (action === 'TRX_CAT') {
+    const trxId = parts[1];
+    const newCat = parts[2];
+    const ss = getSpreadsheet();
+    const sh = ss.getSheetByName(SHEET_NAMES.TRANSAKSI);
+    const data = sh.getDataRange().getValues();
+    for (let i = 1; i < data.length; i++) {
+      if (String(data[i][0]) === trxId) {
+        sh.getRange(i + 1, 5).setValue(newCat);
+        return `🔄 Kategori transaksi *${trxId}* berhasil diubah menjadi *${newCat}*.`;
+      }
+    }
+    return `⚠️ Transaksi ${trxId} tidak ditemukan.`;
+  }
+
+  if (action === 'CAT_CONFIRM') {
+    const chosenCat = parts[1];
+    const pendingMsg = parts[2];
+    const res = processChatbotMessage(member.id, pendingMsg, chosenCat);
+    return res.reply;
+  }
+
+  return 'ℹ️ Perintah tombol telah diproses.';
+}
+
+function answerTelegramCallback(callbackQueryId, notificationText) {
   const token = getConfig('TELEGRAM_BOT_TOKEN', '');
-  if (!token) return;
-  const url = `https://api.telegram.org/bot${token}/sendMessage`;
-  UrlFetchApp.fetch(url, {
+  if (!token || !callbackQueryId) return;
+  UrlFetchApp.fetch(`https://api.telegram.org/bot${token}/answerCallbackQuery`, {
     method: 'post',
     contentType: 'application/json',
     payload: JSON.stringify({
-      chat_id: chatId,
-      text: text,
-      parse_mode: 'Markdown'
+      callback_query_id: callbackQueryId,
+      text: notificationText
     }),
     muteHttpExceptions: true
   });
+}
+
+function sendTelegramMessage(chatId, text, replyMarkup) {
+  const token = getConfig('TELEGRAM_BOT_TOKEN', '');
+  if (!token) return;
+  const url = `https://api.telegram.org/bot${token}/sendMessage`;
+  const payloadObj = {
+    chat_id: chatId,
+    text: text,
+    parse_mode: 'Markdown'
+  };
+  if (replyMarkup) {
+    payloadObj.reply_markup = replyMarkup;
+  }
+  UrlFetchApp.fetch(url, {
+    method: 'post',
+    contentType: 'application/json',
+    payload: JSON.stringify(payloadObj),
+    muteHttpExceptions: true
+  });
+}
+
+/**
+ * One-Click Register Webhook Telegram dari UI Admin Qyona
+ */
+function registerTelegramWebhook(adminId, customWebAppUrl) {
+  const admin = verifyMemberById(adminId);
+  if (!admin || admin.role !== 'Admin') {
+    throw new Error('Hanya Admin yang dapat mendaftarkan Webhook Telegram.');
+  }
+  const token = getConfig('TELEGRAM_BOT_TOKEN', '');
+  if (!token) {
+    throw new Error('Token Bot Telegram belum diisi. Masukkan TELEGRAM_BOT_TOKEN terlebih dahulu lalu klik Simpan.');
+  }
+  const targetUrl = customWebAppUrl || ScriptApp.getService().getUrl();
+  if (!targetUrl) {
+    throw new Error('URL Web App GAS belum ditemukan.');
+  }
+  const resp = UrlFetchApp.fetch(`https://api.telegram.org/bot${token}/setWebhook?url=${encodeURIComponent(targetUrl)}`, {
+    method: 'get',
+    muteHttpExceptions: true
+  });
+  const json = JSON.parse(resp.getContentText());
+  if (json && json.ok) {
+    return {
+      success: true,
+      webhookUrl: targetUrl,
+      message: `Webhook Telegram berhasil terhubung otomatis ke ${targetUrl}!`
+    };
+  }
+  throw new Error('Gagal menyambungkan webhook Telegram: ' + (json.description || resp.getContentText()));
+}
+
+/**
+ * Simulasi & Tes Pengiriman Notifikasi Bot Interaktif (Dengan Tombol Inline)
+ */
+function testInteractiveBotNotification(adminId) {
+  const admin = verifyMemberById(adminId);
+  if (!admin) throw new Error('Pengguna tidak ditemukan.');
+
+  const sampleText = `🤖 *Tes Bot Interaktif 2 Arah Qyona v2.0*\n\n` +
+    `Halo *${admin.name}*! Bot keluarga Anda telah mendukung **Tombol Inline Interaktif**.\n` +
+    `• Saat mencatat pengeluaran via chat, Anda bisa langsung klik **[🔄 Ubah Kategori]** atau **[❌ Batalkan]**.\n` +
+    `• Saat Anak mengajukan dana, tombol **[✅ Setujui]** akan muncul di sini!`;
+
+  const sampleKeyboard = {
+    inline_keyboard: [
+      [
+        { text: '✅ Setujui Rp 125.000 (REQ-01)', callback_data: 'REQ_APPROVE|REQ-01' },
+        { text: '❌ Tolak (REQ-01)', callback_data: 'REQ_REJECT|REQ-01' }
+      ]
+    ]
+  };
+
+  let sentChannel = [];
+  if (getConfig('TELEGRAM_BOT_TOKEN', '') && admin.tgId) {
+    sendTelegramMessage(admin.tgId, sampleText, sampleKeyboard);
+    sentChannel.push('Telegram (' + admin.tgId + ')');
+  }
+  if (getConfig('WA_API_TOKEN', '') && admin.waId) {
+    sendWhatsAppMessage(admin.waId, sampleText + `\n\nKetik *SETUJU REQ-01* untuk mencoba approval via WhatsApp.`);
+    sentChannel.push('WhatsApp (' + admin.waId + ')');
+  }
+
+  return {
+    success: true,
+    sentChannels: sentChannel,
+    previewMessage: sampleText,
+    message: sentChannel.length > 0
+      ? `Pesan interaktif dengan tombol inline berhasil dikirim ke ${sentChannel.join(' & ')}!`
+      : 'Simulasi Bot Interaktif berhasil ditampilkan di panel Chat AI Qyona (isi Token Telegram/WA di pengaturan untuk mengirim ke HP nyata).'
+  };
 }
 
 function sendWhatsAppMessage(phone, text) {
