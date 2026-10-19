@@ -32,6 +32,7 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <link rel="manifest" href="./manifest.json"><meta name="theme-color" content="#0f766e"><link rel="apple-touch-icon" href="./icon.svg">
   <style>
+  /* Qyona Design System v2.0 — Kantong Impian & Interactive Bot 2-Way */
   @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
 
   :root {
@@ -3759,7 +3760,8 @@
 </script>
 
 <script>
-if ('serviceWorker' in navigator) { window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {})); }
+if ('caches' in window) { caches.delete('qyona-pwa-v1').catch(() => {}); }
+if ('serviceWorker' in navigator) { window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js?v=2').then(r => r.update()).catch(() => {})); }
 </script>
 </body>
 </html>
