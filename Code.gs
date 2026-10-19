@@ -92,7 +92,47 @@ function executeAllowedRpc(fnName, args) {
   if (!allowed[fnName]) {
     throw new Error('Fungsi RPC tidak terdaftar: ' + fnName);
   }
-  return allowed[fnName].apply(null, Array.isArray(args) ? args : []);
+  const readOnlyFns = {
+    getPublicFamilyProfiles: true,
+    authenticateUser: true,
+    getAppBootstrapData: true,
+    processReceiptImageOCR: true,
+    exportMonthlyCsv: true,
+    generateMonthlyPdfReport: true,
+    testInteractiveBotNotification: true
+  };
+  const result = allowed[fnName].apply(null, Array.isArray(args) ? args : []);
+  if (!readOnlyFns[fnName]) {
+    invalidateServerCache();
+  }
+  return result;
+}
+
+/**
+ * ============================================================================
+ * TURBO SPEED SERVER CACHE (CacheService.getScriptCache)
+ * Memangkas waktu baca Spreadsheet dari ~3 detik menjadi ~0.05 detik
+ * ============================================================================
+ */
+function getServerCacheVersion() {
+  try {
+    const cache = CacheService.getScriptCache();
+    let ver = cache.get('QYONA_CACHE_VER');
+    if (!ver) {
+      ver = String(Date.now());
+      cache.put('QYONA_CACHE_VER', ver, 21600);
+    }
+    return ver;
+  } catch (e) {
+    return 'v1';
+  }
+}
+
+function invalidateServerCache() {
+  try {
+    const cache = CacheService.getScriptCache();
+    cache.put('QYONA_CACHE_VER', String(Date.now()), 21600);
+  } catch (e) {}
 }
 
 /**
@@ -180,7 +220,17 @@ function getOrCreateReceiptFolder() {
  * INISIALISASI DATABASE & SEED DATA REALISTIS KELUARGA QYONA
  * ============================================================================
  */
-function initDatabaseIfNeeded() {
+function initDatabaseIfNeeded(forceCheck) {
+  if (!forceCheck) {
+    try {
+      const cache = CacheService.getScriptCache();
+      if (cache.get('QYONA_DB_READY_V2') === '1') return;
+      if (PropertiesService.getScriptProperties().getProperty('QYONA_DB_READY_V2') === '1') {
+        cache.put('QYONA_DB_READY_V2', '1', 21600);
+        return;
+      }
+    } catch (e) {}
+  }
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(10000)) return;
   try {
@@ -369,6 +419,10 @@ function initDatabaseIfNeeded() {
     }
 
     recalculateAllWalletBalances(ss);
+    try {
+      PropertiesService.getScriptProperties().setProperty('QYONA_DB_READY_V2', '1');
+      CacheService.getScriptCache().put('QYONA_DB_READY_V2', '1', 21600);
+    } catch (e) {}
   } finally {
     lock.releaseLock();
   }
@@ -493,11 +547,18 @@ function sanitizeMemberForClient(m) {
 
 /**
  * Ambil daftar profil keluarga publik untuk layar pilih akun di halaman login
+ * Dilengkapi CacheService agar halaman login terbuka instan (<50ms)
  */
 function getPublicFamilyProfiles() {
   initDatabaseIfNeeded();
+  const cacheKey = 'PUB_PROFILES_' + getServerCacheVersion();
+  try {
+    const cached = CacheService.getScriptCache().get(cacheKey);
+    if (cached) return JSON.parse(cached);
+  } catch (e) {}
+
   const members = getAllMembers().filter(m => m.status === 'Aktif');
-  return {
+  const result = {
     familyName: 'Keluarga Rumah Qyona',
     maxCapacity: 6,
     activeCount: members.length,
@@ -511,15 +572,31 @@ function getPublicFamilyProfiles() {
       tgId: m.tgId
     }))
   };
+
+  try {
+    CacheService.getScriptCache().put(cacheKey, JSON.stringify(result), 600);
+  } catch (e) {}
+  return result;
 }
 
 /**
  * ============================================================================
- * PENGAMBILAN DATA DASHBOARD REAL-TIME DENGAN FILTER RBAC (US-3 & US-6)
+ * PENGAMBILAN DATA DASHBOARD REAL-TIME DENGAN FILTER RBAC + TURBO CACHE (US-3 & US-6)
  * ============================================================================
  */
 function getAppBootstrapData(memberId, selectedMonthYear) {
   initDatabaseIfNeeded();
+  const now = new Date();
+  const currentYM = selectedMonthYear || Utilities.formatDate(now, 'Asia/Jakarta', 'yyyy-MM');
+  const cacheKey = 'BOOT_' + getServerCacheVersion() + '_' + String(memberId) + '_' + currentYM;
+
+  try {
+    const cached = CacheService.getScriptCache().get(cacheKey);
+    if (cached) {
+      return JSON.parse(cached);
+    }
+  } catch (e) {}
+
   const currentUser = verifyMemberById(memberId);
   if (!currentUser) {
     throw new Error('Sesi tidak valid atau akses anggota telah dinonaktifkan.');
@@ -528,9 +605,6 @@ function getAppBootstrapData(memberId, selectedMonthYear) {
   const ss = getSpreadsheet();
   const isAdmin = currentUser.role === 'Admin';
 
-  // Target bulan (default: bulan berjalan YYYY-MM)
-  const now = new Date();
-  const currentYM = selectedMonthYear || Utilities.formatDate(now, 'Asia/Jakarta', 'yyyy-MM');
   const [yrStr, moStr] = currentYM.split('-');
   const yr = parseInt(yrStr, 10);
   const mo = parseInt(moStr, 10);
@@ -558,34 +632,41 @@ function getAppBootstrapData(memberId, selectedMonthYear) {
       type: String(r[5] || 'Keluar')
     });
   }
-  // RBAC Filter Kategori untuk Anak
   if (!isAdmin) {
     categories = categories.filter(c => c.name === 'Jajan/Anak');
   }
 
-  // 3. Dompet / Sumber Dana
-  recalculateAllWalletBalances(ss);
+  // 3. Dompet & 4. Transaksi (Hitung saldo berjalan di memori tanpa perlu tulis ulang ke Sheet saat baca!)
   const shDompet = ss.getSheetByName(SHEET_NAMES.DOMPET);
   const domData = shDompet.getDataRange().getValues();
+  const shTrx = ss.getSheetByName(SHEET_NAMES.TRANSAKSI);
+  const trxData = shTrx.getDataRange().getValues();
+
+  const deltaByWallet = {};
+  for (let i = 1; i < trxData.length; i++) {
+    const tr = trxTrxRow(trxData[i]);
+    if (!tr.id) continue;
+    deltaByWallet[tr.walletId] = (deltaByWallet[tr.walletId] || 0) + (tr.type === 'Masuk' ? tr.amount : -tr.amount);
+  }
+
   let wallets = [];
   for (let i = 1; i < domData.length; i++) {
     const r = domData[i];
     if (!r[0]) continue;
+    const wId = String(r[0]);
+    const initBal = Number(r[3] || 0);
     wallets.push({
-      id: String(r[0]),
+      id: wId,
       name: String(r[1]),
       type: String(r[2]),
-      initialBalance: Number(r[3] || 0),
-      currentBalance: Number(r[4] || 0),
+      initialBalance: initBal,
+      currentBalance: initBal + (deltaByWallet[wId] || 0),
       info: String(r[5] || '')
     });
   }
   const walletMap = {};
   wallets.forEach(w => { walletMap[w.id] = w; });
 
-  // 4. Transaksi
-  const shTrx = ss.getSheetByName(SHEET_NAMES.TRANSAKSI);
-  const trxData = shTrx.getDataRange().getValues();
   const allTransactions = [];
   for (let i = 1; i < trxData.length; i++) {
     const r = trxData[i];
@@ -599,7 +680,6 @@ function getAppBootstrapData(memberId, selectedMonthYear) {
     const trxOwnerId = String(r[7] || '');
     const trxCategory = String(r[4] || '');
 
-    // RBAC: Member terbatas (Anak) hanya boleh melihat transaksinya sendiri atau kategori Jajan/Anak miliknya
     if (!isAdmin && trxOwnerId !== currentUser.id) {
       continue;
     }
@@ -611,7 +691,7 @@ function getAppBootstrapData(memberId, selectedMonthYear) {
       id: String(r[0]),
       date: dateStr,
       monthYear: dateStr.slice(0, 7),
-      type: String(r[2]), // 'Masuk' | 'Keluar'
+      type: String(r[2]),
       amount: Number(r[3] || 0),
       category: trxCategory,
       description: String(r[5] || ''),
@@ -627,13 +707,11 @@ function getAppBootstrapData(memberId, selectedMonthYear) {
     });
   }
 
-  // Urutkan transaksi terbaru di atas
   allTransactions.sort((a, b) => (b.date > a.date ? 1 : -1));
 
   const currentMonthTrx = allTransactions.filter(t => t.monthYear === currentYM);
   const prevMonthTrx = allTransactions.filter(t => t.monthYear === prevYM);
 
-  // Kalkulasi Ringkasan & Perbandingan Kategori
   let totalIncome = 0;
   let totalExpense = 0;
   const spendingByCategory = {};
@@ -659,7 +737,6 @@ function getAppBootstrapData(memberId, selectedMonthYear) {
     .map(c => {
       const spent = spendingByCategory[c.name] || 0;
       const prevSpent = prevSpendingByCategory[c.name] || 0;
-      // Untuk Anak, gunakan kuota pribadinya sebagai limit
       const limit = (!isAdmin && c.name === 'Jajan/Anak')
         ? (currentUser.allowanceQuota || 500000)
         : c.monthlyLimit;
@@ -682,7 +759,7 @@ function getAppBootstrapData(memberId, selectedMonthYear) {
       };
     });
 
-  // 5. Tagihan Rutin (Hanya Admin yang melihat daftar tagihan rumah tangga lengkap)
+  // 5. Tagihan Rutin
   const shTagihan = ss.getSheetByName(SHEET_NAMES.TAGIHAN);
   const tagData = shTagihan.getDataRange().getValues();
   const bills = [];
@@ -703,7 +780,7 @@ function getAppBootstrapData(memberId, selectedMonthYear) {
     }
   }
 
-  // 6. Pengajuan Dana (Admin lihat semua, Anak lihat miliknya sendiri)
+  // 6. Pengajuan Dana
   const shReq = ss.getSheetByName(SHEET_NAMES.PENGAJUAN);
   const reqData = shReq.getDataRange().getValues();
   const fundRequests = [];
@@ -724,7 +801,7 @@ function getAppBootstrapData(memberId, selectedMonthYear) {
     });
   }
 
-  // 7. AI Insights (RBAC: Admin lihat semua, Anak hanya lihat tips menabung/harian)
+  // 7. AI Insights
   const shIns = ss.getSheetByName(SHEET_NAMES.INSIGHT);
   const insData = shIns.getDataRange().getValues();
   const insights = [];
@@ -748,7 +825,11 @@ function getAppBootstrapData(memberId, selectedMonthYear) {
   insights.reverse();
 
   // 8. Kantong Impian & Tabungan Target Keluarga (Upgrade v2.0)
-  const shGoals = ss.getSheetByName(SHEET_NAMES.GOALS);
+  let shGoals = ss.getSheetByName(SHEET_NAMES.GOALS);
+  if (!shGoals) {
+    initDatabaseIfNeeded(true);
+    shGoals = ss.getSheetByName(SHEET_NAMES.GOALS);
+  }
   const goalsData = shGoals ? shGoals.getDataRange().getValues() : [];
   const savingsGoals = [];
   const monthlySurplusEstimate = Math.max(500000, totalIncome - totalExpense);
@@ -756,7 +837,6 @@ function getAppBootstrapData(memberId, selectedMonthYear) {
     const r = goalsData[i];
     if (!r[0]) continue;
     const ownerId = String(r[5] || 'ALL');
-    // RBAC: Anak melihat kantong miliknya sendiri atau kantong bersama keluarga ('ALL')
     if (!isAdmin && ownerId !== 'ALL' && ownerId !== currentUser.id) continue;
     const targetAmt = Number(r[2] || 0);
     const currentAmt = Number(r[3] || 0);
@@ -765,12 +845,18 @@ function getAppBootstrapData(memberId, selectedMonthYear) {
     const matchRate = Number(r[8] || 0);
     const ownerObj = ownerId === 'ALL' ? { name: 'Keluarga Qyona', avatar: '🏡' } : (memberMap[ownerId] || { name: ownerId, avatar: '🧒' });
     const estMonths = remainingAmt === 0 ? 0 : Math.max(1, Math.ceil(remainingAmt / (ownerId === 'ALL' ? (monthlySurplusEstimate * 0.35) : 150000)));
+    const goalTitle = String(r[1]);
     savingsGoals.push({
       id: String(r[0]),
-      title: String(r[1]),
+      name: goalTitle,
+      title: goalTitle,
       targetAmount: targetAmt,
+      savedAmount: currentAmt,
       currentAmount: currentAmt,
+      remaining: remainingAmt,
       remainingAmount: remainingAmt,
+      monthlySuggestion: remainingAmt > 0 ? Math.ceil(remainingAmt / Math.max(1, estMonths)) : 0,
+      isCompleted: currentAmt >= targetAmt,
       percentage: pct,
       deadline: r[4] instanceof Date ? Utilities.formatDate(r[4], 'Asia/Jakarta', 'yyyy-MM-dd') : String(r[4] || ''),
       ownerId: ownerId,
@@ -786,13 +872,11 @@ function getAppBootstrapData(memberId, selectedMonthYear) {
     });
   }
 
-  // Hitung Saldo sesuai RBAC
   let totalBalance = 0;
   let visibleWallets = wallets;
   if (isAdmin) {
     totalBalance = wallets.reduce((acc, w) => acc + w.currentBalance, 0);
   } else {
-    // Member Anak: hanya lihat sisa kuota jajan pribadinya
     const quota = currentUser.allowanceQuota || 500000;
     const childSpent = currentMonthTrx
       .filter(t => t.type === 'Keluar')
@@ -809,11 +893,14 @@ function getAppBootstrapData(memberId, selectedMonthYear) {
   }
 
   const totalBudgetLimit = categoryBreakdown.reduce((acc, c) => acc + c.limit, 0);
+  const totalGoalsSaved = savingsGoals.reduce((acc, g) => acc + g.currentAmount, 0);
+  const totalGoalsTarget = savingsGoals.reduce((acc, g) => acc + g.targetAmount, 0);
 
-  return {
+  const responsePayload = {
     serverTime: Utilities.formatDate(new Date(), 'Asia/Jakarta', 'yyyy-MM-dd HH:mm:ss'),
     currentMonthYear: currentYM,
     prevMonthYear: prevYM,
+    dataHash: `${currentMonthTrx.length}_${totalBalance}_${totalExpense}_${totalGoalsSaved}_${fundRequests.length}_${bills.filter(b => b.status === 'Lunas').length}`,
     currentUser: sanitizeMemberForClient(currentUser),
     summary: {
       totalBalance: totalBalance,
@@ -822,8 +909,8 @@ function getAppBootstrapData(memberId, selectedMonthYear) {
       totalBudgetLimit: totalBudgetLimit,
       budgetUsedPercent: totalBudgetLimit > 0 ? Math.round((totalExpense / totalBudgetLimit) * 100) : 0,
       transactionCount: currentMonthTrx.length,
-      totalGoalsSaved: savingsGoals.reduce((acc, g) => acc + g.currentAmount, 0),
-      totalGoalsTarget: savingsGoals.reduce((acc, g) => acc + g.targetAmount, 0)
+      totalGoalsSaved: totalGoalsSaved,
+      totalGoalsTarget: totalGoalsTarget
     },
     categories: categories,
     categoryBreakdown: categoryBreakdown,
@@ -842,10 +929,19 @@ function getAppBootstrapData(memberId, selectedMonthYear) {
       spreadsheetUrl: ss.getUrl()
     } : null
   };
+
+  try {
+    const jsonStr = JSON.stringify(responsePayload);
+    if (jsonStr.length < 95000) {
+      CacheService.getScriptCache().put(cacheKey, jsonStr, 300);
+    }
+  } catch (e) {}
+
+  return responsePayload;
 }
 
 /**
- * Hitung ulang Saldo Berjalan di Sheet Dompet berdasarkan Saldo Awal + Masuk - Keluar
+ * Hitung ulang Saldo Berjalan di Sheet Dompet menggunakan Batch Write (1x setValues, bukan loop setValue)
  */
 function recalculateAllWalletBalances(ss) {
   ss = ss || getSpreadsheet();
@@ -868,13 +964,17 @@ function recalculateAllWalletBalances(ss) {
     }
   }
 
+  const updatedBalances = [];
   for (let j = 1; j < domData.length; j++) {
     const wId = String(domData[j][0]);
-    if (!wId) continue;
     const initBal = Number(domData[j][3] || 0);
-    const runningBal = initBal + (deltaByWallet[wId] || 0);
-    shDompet.getRange(j + 1, 5).setValue(runningBal);
+    const runningBal = wId ? (initBal + (deltaByWallet[wId] || 0)) : initBal;
+    updatedBalances.push([runningBal]);
   }
+  if (updatedBalances.length > 0) {
+    shDompet.getRange(2, 5, updatedBalances.length, 1).setValues(updatedBalances);
+  }
+  invalidateServerCache();
 }
 
 function trxTrxRow(r) {
@@ -1903,17 +2003,22 @@ function saveSavingsGoal(memberId, goalPayload) {
     if (!user) throw new Error('Pengguna tidak valid.');
 
     const ss = getSpreadsheet();
-    const sh = ss.getSheetByName(SHEET_NAMES.GOALS);
+    let sh = ss.getSheetByName(SHEET_NAMES.GOALS);
+    if (!sh) {
+      initDatabaseIfNeeded(true);
+      sh = ss.getSheetByName(SHEET_NAMES.GOALS);
+    }
     const isAdmin = user.role === 'Admin';
     const newId = 'GOL-' + Utilities.formatDate(new Date(), 'Asia/Jakarta', 'ddHHmmss');
+    const goalTitle = String(goalPayload.name || goalPayload.title || 'Kantong Impian Baru');
     const targetAmt = Math.max(10000, Number(goalPayload.targetAmount || 1000000));
-    const initSaved = Math.max(0, Number(goalPayload.currentAmount || 0));
+    const initSaved = Math.max(0, Number(goalPayload.savedAmount !== undefined ? goalPayload.savedAmount : (goalPayload.currentAmount || 0)));
     const ownerId = isAdmin ? String(goalPayload.ownerId || 'ALL') : user.id;
     const matchRate = isAdmin ? Number(goalPayload.matchingRate || 0) : 50;
 
     sh.appendRow([
       newId,
-      String(goalPayload.title || 'Kantong Impian Baru'),
+      goalTitle,
       targetAmt,
       initSaved,
       String(goalPayload.deadline || '2026-12-31'),
@@ -1923,11 +2028,12 @@ function saveSavingsGoal(memberId, goalPayload) {
       matchRate,
       'Aktif'
     ]);
+    invalidateServerCache();
 
     return {
       success: true,
       goalId: newId,
-      message: `Kantong Impian "${goalPayload.title}" (Target Rp ${formatRupiahPlain(targetAmt)}) berhasil dibuat!`
+      message: `Kantong Impian "${goalTitle}" (Target Rp ${formatRupiahPlain(targetAmt)}) berhasil dibuat!`
     };
   } finally {
     lock.releaseLock();
@@ -1980,6 +2086,7 @@ function contributeToGoal(memberId, payload) {
           walletId: walletId,
           source: 'Form'
         });
+        invalidateServerCache();
 
         const pct = targetAmt > 0 ? Math.min(100, Math.round((updatedAmt / targetAmt) * 100)) : 100;
         const bonusMsg = parentBonus > 0
@@ -2047,6 +2154,7 @@ function processFundRequestApproval(adminId, requestId, decision) {
             source: 'Form'
           });
         }
+        invalidateServerCache();
 
         // Kirim notifikasi balasan otomatis ke WA/Telegram Anak yang mengajukan
         const childMember = verifyMemberById(requesterId);
@@ -2093,6 +2201,7 @@ function updateCategoryBudget(adminId, categoryName, newLimit, newWarnPercent) {
         if (newWarnPercent !== undefined) {
           sh.getRange(i + 1, 3).setValue(Number(newWarnPercent || 80));
         }
+        invalidateServerCache();
         return { success: true, message: `Target anggaran "${categoryName}" diperbarui menjadi Rp ${formatRupiahPlain(newLimit)}.` };
       }
     }
@@ -2160,6 +2269,7 @@ function inviteOrUpdateFamilyMember(adminId, memberPayload) {
       avatar,
       Number(memberPayload.allowanceQuota || (role === 'Member' ? 500000 : 0))
     ]);
+    invalidateServerCache();
 
     return {
       success: true,

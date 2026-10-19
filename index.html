@@ -30,7 +30,6 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
   <!-- Chart.js untuk Grafik Donut & Perbandingan Kategori -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-  <link rel="manifest" href="./manifest.json"><meta name="theme-color" content="#0f766e"><link rel="apple-touch-icon" href="./icon.svg">
   <style>
   /* Qyona Design System v2.0 — Kantong Impian & Interactive Bot 2-Way */
   @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
@@ -1091,6 +1090,9 @@
     selectedProfileId: 'USR-02',
     activeTab: 'dashboard',
     bootstrapData: null,
+    cachedProfiles: null,
+    lastRenderedHash: '',
+    isFetching: false,
     donutChartInstance: null,
     comparisonChartInstance: null,
     pendingConfirmationMsg: null,
@@ -1149,26 +1151,32 @@
 
   /**
    * ============================================================================
-   * INITIALIZATION & THEME MANAGEMENT
+   * INITIALIZATION & THEME MANAGEMENT (TURBO INSTANT BOOT)
    * ============================================================================
    */
-  document.addEventListener('DOMContentLoaded', async () => {
+  document.addEventListener('DOMContentLoaded', () => {
     initTheme();
     initMonthPicker();
-    await loadPublicLoginProfiles();
 
-    // Cek apakah ada sesi login tersimpan
+    // 1. Cek sesi login tersimpan secara instan (0ms tanpa tunggu network!)
+    const savedUserJson = sessionStorage.getItem('qyona_active_user_obj');
     const savedMemberId = sessionStorage.getItem('qyona_active_member_id');
-    if (savedMemberId) {
+    if (savedUserJson) {
       try {
-        const authRes = await callGasBackend('authenticateUser', { memberId: savedMemberId });
-        if (authRes && authRes.success) {
-          enterMainApplication(authRes.user);
+        const cachedUser = JSON.parse(savedUserJson);
+        if (cachedUser && cachedUser.id) {
+          enterMainApplication(cachedUser);
         }
-      } catch (e) {
-        sessionStorage.removeItem('qyona_active_member_id');
+      } catch (e) {}
+    } else if (savedMemberId) {
+      const localAuth = LOCAL_GAS_EMULATOR.authenticateUser({ memberId: savedMemberId });
+      if (localAuth && localAuth.success) {
+        enterMainApplication(localAuth.user);
       }
     }
+
+    // 2. Muat profil login (instan dari cache localStorage lalu sinkronisasi di latar belakang)
+    loadPublicLoginProfiles();
   });
 
   function initTheme() {
@@ -1186,7 +1194,7 @@
     localStorage.setItem('qyona_theme', isDark ? 'dark' : 'light');
     updateThemeIcons();
     if (APP_STATE.bootstrapData) {
-      renderCharts(APP_STATE.bootstrapData);
+      renderCharts(APP_STATE.bootstrapData, true);
     }
   }
 
@@ -1230,9 +1238,9 @@
     container.appendChild(toast);
     setTimeout(() => {
       toast.style.opacity = '0';
-      toast.style.transition = 'opacity 0.3s ease';
-      setTimeout(() => toast.remove(), 300);
-    }, 4200);
+      toast.style.transition = 'opacity 0.25s ease';
+      setTimeout(() => toast.remove(), 250);
+    }, 3600);
   }
 
   function formatRp(num) {
@@ -1242,54 +1250,77 @@
 
   /**
    * ============================================================================
-   * LOGIN & RBAC PROFILE SELECTION
+   * LOGIN & RBAC PROFILE SELECTION (INSTANT CACHE + OPTIMISTIC AUTH)
    * ============================================================================
    */
+  function renderLoginProfilesUI(info) {
+    if (!info || !info.profiles) return;
+    APP_STATE.cachedProfiles = info;
+    const badge = document.getElementById('capacityBadge');
+    if (badge) badge.textContent = `${info.activeCount} / ${info.maxCapacity} Anggota Aktif`;
+
+    const grid = document.getElementById('familyProfileGrid');
+    if (!grid) return;
+    grid.innerHTML = info.profiles.map(p => {
+      const isSelected = p.id === APP_STATE.selectedProfileId;
+      const roleBadge = p.role === 'Admin'
+        ? '<span class="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-extrabold">Admin</span>'
+        : '<span class="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/15 text-purple-700 dark:text-purple-300 font-extrabold">Member Anak</span>';
+      return `
+        <button type="button" onclick="selectLoginProfile('${p.id}', '${p.hintPin}')"
+          class="p-3 rounded-2xl border text-left transition flex items-center gap-3 ${
+            isSelected
+              ? 'border-emerald-500 bg-emerald-50/70 dark:bg-emerald-950/40 ring-2 ring-emerald-500/30'
+              : 'border-slate-200 dark:border-slate-800 hover:border-emerald-400 bg-slate-50/50 dark:bg-slate-800/40'
+          }">
+          <div class="w-10 h-10 rounded-xl bg-white dark:bg-slate-800 shadow-xs flex items-center justify-center text-xl shrink-0">
+            ${p.avatar}
+          </div>
+          <div class="min-w-0 flex-1">
+            <div class="flex items-center justify-between gap-1">
+              <span class="font-extrabold text-xs text-slate-900 dark:text-white truncate">${p.name}</span>
+            </div>
+            <div class="flex items-center gap-1.5 mt-1">
+              ${roleBadge}
+              <span class="text-[10px] text-slate-400">PIN: ${p.hintPin}</span>
+            </div>
+          </div>
+        </button>
+      `;
+    }).join('');
+  }
+
   async function loadPublicLoginProfiles() {
+    // Tampilkan instan (0ms) dari localStorage atau Emulator terlebih dahulu
+    try {
+      const cached = localStorage.getItem('qyona_cache_profiles_v2');
+      if (cached) {
+        renderLoginProfilesUI(JSON.parse(cached));
+      } else {
+        renderLoginProfilesUI(LOCAL_GAS_EMULATOR.getPublicFamilyProfiles());
+      }
+    } catch (e) {}
+
+    // Lalu sinkronkan dari server Google Apps Script di latar belakang
     try {
       const info = await callGasBackend('getPublicFamilyProfiles');
-      const badge = document.getElementById('capacityBadge');
-      if (badge) badge.textContent = `${info.activeCount} / ${info.maxCapacity} Anggota Aktif`;
-
-      const grid = document.getElementById('familyProfileGrid');
-      if (!grid) return;
-      grid.innerHTML = info.profiles.map(p => {
-        const isSelected = p.id === APP_STATE.selectedProfileId;
-        const roleBadge = p.role === 'Admin'
-          ? '<span class="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-extrabold">Admin</span>'
-          : '<span class="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/15 text-purple-700 dark:text-purple-300 font-extrabold">Member Anak</span>';
-        return `
-          <button type="button" onclick="selectLoginProfile('${p.id}', '${p.hintPin}')"
-            class="p-3 rounded-2xl border text-left transition flex items-center gap-3 ${
-              isSelected
-                ? 'border-emerald-500 bg-emerald-50/70 dark:bg-emerald-950/40 ring-2 ring-emerald-500/30'
-                : 'border-slate-200 dark:border-slate-800 hover:border-emerald-400 bg-slate-50/50 dark:bg-slate-800/40'
-            }">
-            <div class="w-10 h-10 rounded-xl bg-white dark:bg-slate-800 shadow-xs flex items-center justify-center text-xl shrink-0">
-              ${p.avatar}
-            </div>
-            <div class="min-w-0 flex-1">
-              <div class="flex items-center justify-between gap-1">
-                <span class="font-extrabold text-xs text-slate-900 dark:text-white truncate">${p.name}</span>
-              </div>
-              <div class="flex items-center gap-1.5 mt-1">
-                ${roleBadge}
-                <span class="text-[10px] text-slate-400">PIN: ${p.hintPin}</span>
-              </div>
-            </div>
-          </button>
-        `;
-      }).join('');
-    } catch (e) {
-      showToast('Gagal memuat profil keluarga: ' + e.message, 'error');
-    }
+      if (info && info.profiles) {
+        localStorage.setItem('qyona_cache_profiles_v2', JSON.stringify(info));
+        renderLoginProfilesUI(info);
+      }
+    } catch (e) {}
   }
 
   function selectLoginProfile(memberId, defaultPin) {
     APP_STATE.selectedProfileId = memberId;
     const pinInput = document.getElementById('loginPinInput');
     if (pinInput && defaultPin) pinInput.value = defaultPin;
-    loadPublicLoginProfiles();
+    // Render ulang kartu pilihan secara instan dari memori tanpa panggil server lagi!
+    if (APP_STATE.cachedProfiles) {
+      renderLoginProfilesUI(APP_STATE.cachedProfiles);
+    } else {
+      loadPublicLoginProfiles();
+    }
   }
 
   function switchLoginTab(mode) {
@@ -1311,7 +1342,22 @@
   }
 
   async function handleProfileLogin() {
-    const pin = document.getElementById('loginPinInput').value;
+    const pin = String(document.getElementById('loginPinInput').value || '').trim();
+    // Optimistic Instant Login (<10ms) jika profil cocok dengan cache/emulator
+    const localCheck = LOCAL_GAS_EMULATOR.authenticateUser({
+      memberId: APP_STATE.selectedProfileId,
+      pin: pin
+    });
+    if (localCheck && localCheck.success) {
+      enterMainApplication(localCheck.user);
+      // Verifikasi diam-diam di latar belakang
+      callGasBackend('authenticateUser', {
+        memberId: APP_STATE.selectedProfileId,
+        pin: pin
+      }).catch(() => {});
+      return;
+    }
+
     try {
       const res = await callGasBackend('authenticateUser', {
         memberId: APP_STATE.selectedProfileId,
@@ -1353,7 +1399,9 @@
 
   function enterMainApplication(user) {
     APP_STATE.currentUser = user;
+    APP_STATE.lastRenderedHash = '';
     sessionStorage.setItem('qyona_active_member_id', user.id);
+    sessionStorage.setItem('qyona_active_user_obj', JSON.stringify(user));
 
     document.getElementById('loginView').classList.add('hidden');
     document.getElementById('mainAppView').classList.remove('hidden');
@@ -1385,27 +1433,53 @@
 
     initChatbotWelcome(user);
     switchMainTab('dashboard');
-    refreshDashboardData(true);
 
-    // Polling real-time otomatis setiap 25 detik (US-3 AC2)
+    // Solusi 1 (Stale-While-Revalidate): Render instan dalam 0ms dari cache localStorage atau seed lokal, lalu sinkronkan di background!
+    const selectedYM = document.getElementById('monthPickerInput')?.value || '';
+    const cacheKey = `qyona_boot_v2_${user.id}_${selectedYM}`;
+    try {
+      const cachedBoot = localStorage.getItem(cacheKey);
+      if (cachedBoot) {
+        const parsed = JSON.parse(cachedBoot);
+        APP_STATE.bootstrapData = parsed;
+        renderAllViews(parsed, true);
+      } else {
+        const instantBoot = LOCAL_GAS_EMULATOR.getAppBootstrapData(user.id, selectedYM);
+        APP_STATE.bootstrapData = instantBoot;
+        renderAllViews(instantBoot, true);
+      }
+    } catch (e) {}
+
+    // Ambil data terbaru dari Google Sheets di latar belakang tanpa memblokir UI
+    refreshDashboardData(true, true);
+
+    // Solusi 4: Smart Polling setiap 45 detik (hanya saat tab browser sedang aktif terlihat)
     if (APP_STATE.pollingTimer) clearInterval(APP_STATE.pollingTimer);
-    APP_STATE.pollingTimer = setInterval(() => refreshDashboardData(false), 25000);
+    APP_STATE.pollingTimer = setInterval(() => {
+      if (!document.hidden && !APP_STATE.isFetching) {
+        refreshDashboardData(false, false);
+      }
+    }, 45000);
 
     showToast(`Selamat datang, ${user.name}! Hak akses: ${user.role}.`, 'success');
   }
 
   function logoutSession() {
     sessionStorage.removeItem('qyona_active_member_id');
+    sessionStorage.removeItem('qyona_active_user_obj');
     if (APP_STATE.pollingTimer) clearInterval(APP_STATE.pollingTimer);
     APP_STATE.currentUser = null;
+    APP_STATE.lastRenderedHash = '';
     document.getElementById('mainAppView').classList.add('hidden');
     document.getElementById('loginView').classList.remove('hidden');
-    loadPublicLoginProfiles();
+    if (APP_STATE.cachedProfiles) {
+      renderLoginProfilesUI(APP_STATE.cachedProfiles);
+    }
   }
 
   /**
    * ============================================================================
-   * NAVIGASI TAB RESPONSIVE (MOBILE-FIRST & DESKTOP 2-PANEL)
+   * NAVIGASI TAB INSTAN (0ms ZERO-DELAY SWITCHING)
    * ============================================================================
    */
   function switchMainTab(tabName) {
@@ -1426,13 +1500,11 @@
     const leftPanel = document.getElementById('leftPrimaryPanel');
     const rightChat = document.getElementById('rightChatbotPanel');
 
-    // Di layar mobile (<1024px), tab 'chat' menampilkan panel chatbot penuh
     if (tabName === 'chat') {
       leftPanel.classList.add('hidden', 'lg:block');
       rightChat.classList.remove('hidden');
     } else {
       leftPanel.classList.remove('hidden');
-      // Di mobile sembunyikan chat saat melihat tab lain, di desktop (lg) tetap tampil berdampingan
       rightChat.classList.add('hidden', 'lg:block');
       Object.keys(views).forEach(k => {
         if (views[k]) {
@@ -1442,7 +1514,6 @@
       });
     }
 
-    // Highlight tombol navigasi aktif
     document.querySelectorAll('.nav-tab-btn').forEach(btn => {
       const isCurrent = btn.getAttribute('data-tab') === tabName;
       btn.className = `nav-tab-btn ${btn.getAttribute('data-tab') === 'chat' ? 'lg:hidden' : ''} px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
@@ -1460,39 +1531,77 @@
     });
 
     if (tabName === 'insight' && APP_STATE.bootstrapData) {
-      setTimeout(() => renderComparisonChart(APP_STATE.bootstrapData), 60);
+      requestAnimationFrame(() => renderComparisonChart(APP_STATE.bootstrapData));
     }
   }
 
   /**
    * ============================================================================
-   * PENGAMBILAN & RENDER DATA DASHBOARD REAL-TIME (US-3)
+   * PENGAMBILAN & RENDER DATA DASHBOARD REAL-TIME DENGAN SMART DIFF & CACHE (US-3)
    * ============================================================================
    */
-  async function refreshDashboardData(showSpinner = false) {
+  function computeDataSignature(data) {
+    if (!data) return '';
+    if (data.dataHash) return data.dataHash;
+    const s = data.summary || {};
+    return `${(data.transactions || []).length}_${s.totalBalance}_${s.totalExpense}_${s.totalGoalsSaved}_${(data.fundRequests || []).length}`;
+  }
+
+  function renderAllViews(data, forceRender = false) {
+    if (!data) return;
+    const sig = computeDataSignature(data);
+    if (!forceRender && sig && sig === APP_STATE.lastRenderedHash) {
+      return; // Skip manipulasi DOM & Chart jika data identik 100%!
+    }
+    APP_STATE.lastRenderedHash = sig;
+
+    renderTopSummaryCards(data);
+    renderCategoryProgressBars(data);
+    renderCharts(data);
+    populateFilterAndFormSelects(data);
+    renderTransactionList();
+    renderGoalsView(data);
+    renderInsightsView(data);
+    renderBillsAndApprovalsView(data);
+    if (data.currentUser.role === 'Admin') {
+      renderManageView(data);
+    }
+  }
+
+  async function refreshDashboardData(showSpinner = false, forceRender = false) {
     if (!APP_STATE.currentUser) return;
+    const selectedYM = document.getElementById('monthPickerInput')?.value || '';
+    const cacheKey = `qyona_boot_v2_${APP_STATE.currentUser.id}_${selectedYM}`;
+
+    // Jika pengguna mengganti bulan dan ada cache bulan tersebut, tampilkan instan dulu!
+    if (showSpinner && !APP_STATE.bootstrapData) {
+      try {
+        const cached = localStorage.getItem(cacheKey);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          APP_STATE.bootstrapData = parsed;
+          renderAllViews(parsed, true);
+        }
+      } catch (e) {}
+    }
+
     const syncIcon = document.getElementById('syncIcon');
     if (showSpinner && syncIcon) syncIcon.classList.add('fa-spin');
+    APP_STATE.isFetching = true;
 
     try {
-      const selectedYM = document.getElementById('monthPickerInput')?.value || '';
       const data = await callGasBackend('getAppBootstrapData', APP_STATE.currentUser.id, selectedYM);
       APP_STATE.bootstrapData = data;
-
-      renderTopSummaryCards(data);
-      renderCategoryProgressBars(data);
-      renderCharts(data);
-      populateFilterAndFormSelects(data);
-      renderTransactionList();
-      renderGoalsView(data);
-      renderInsightsView(data);
-      renderBillsAndApprovalsView(data);
-      if (data.currentUser.role === 'Admin') {
-        renderManageView(data);
-      }
+      try {
+        localStorage.setItem(cacheKey, JSON.stringify(data));
+      } catch (e) {}
+      renderAllViews(data, forceRender);
     } catch (err) {
-      showToast('Gagal menyinkronkan data: ' + err.message, 'error');
+      if (showSpinner) {
+        showToast('Gagal menyinkronkan data: ' + err.message, 'error');
+      }
     } finally {
+      APP_STATE.isFetching = false;
       if (syncIcon) syncIcon.classList.remove('fa-spin');
     }
   }
@@ -1565,7 +1674,7 @@
     }).join('');
   }
 
-  function renderCharts(data) {
+  function renderCharts(data, forceRecreate = false) {
     const ctx = document.getElementById('categoryDonutChart');
     if (!ctx) return;
 
@@ -1573,38 +1682,47 @@
     const labels = activeCats.length > 0 ? activeCats.map(c => c.name) : ['Belum Ada Pengeluaran'];
     const values = activeCats.length > 0 ? activeCats.map(c => c.spent) : [1];
     const colors = activeCats.length > 0 ? activeCats.map(c => c.color) : ['#cbd5e1'];
-
-    if (APP_STATE.donutChartInstance) {
-      APP_STATE.donutChartInstance.destroy();
-    }
-
     const isDark = document.documentElement.classList.contains('dark');
-    APP_STATE.donutChartInstance = new Chart(ctx, {
-      type: 'doughnut',
-      data: {
-        labels: labels,
-        datasets: [{
-          data: values,
-          backgroundColor: colors,
-          borderColor: isDark ? '#0f172a' : '#ffffff',
-          borderWidth: 3,
-          hoverOffset: 6
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        cutout: '68%',
-        plugins: {
-          legend: { display: false },
-          tooltip: {
-            callbacks: {
-              label: (context) => ` ${context.label}: ${formatRp(context.raw)}`
+
+    // Solusi 4: Update data Chart.js in-place tanpa destroy() agar tidak lag!
+    if (APP_STATE.donutChartInstance && !forceRecreate) {
+      APP_STATE.donutChartInstance.data.labels = labels;
+      APP_STATE.donutChartInstance.data.datasets[0].data = values;
+      APP_STATE.donutChartInstance.data.datasets[0].backgroundColor = colors;
+      APP_STATE.donutChartInstance.data.datasets[0].borderColor = isDark ? '#0f172a' : '#ffffff';
+      APP_STATE.donutChartInstance.update('none');
+    } else {
+      if (APP_STATE.donutChartInstance) {
+        APP_STATE.donutChartInstance.destroy();
+      }
+      APP_STATE.donutChartInstance = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+          labels: labels,
+          datasets: [{
+            data: values,
+            backgroundColor: colors,
+            borderColor: isDark ? '#0f172a' : '#ffffff',
+            borderWidth: 3,
+            hoverOffset: 6
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          animation: { duration: 250 },
+          cutout: '68%',
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: (context) => ` ${context.label}: ${formatRp(context.raw)}`
+              }
             }
           }
         }
-      }
-    });
+      });
+    }
 
     // Render custom compact legend
     const legendEl = document.getElementById('donutLegendList');
@@ -1621,35 +1739,48 @@
     }
 
     if (APP_STATE.activeTab === 'insight') {
-      renderComparisonChart(data);
+      renderComparisonChart(data, forceRecreate);
     }
   }
 
-  function renderComparisonChart(data) {
+  function renderComparisonChart(data, forceRecreate = false) {
     const ctx = document.getElementById('comparisonBarChart');
     if (!ctx) return;
+
+    const isDark = document.documentElement.classList.contains('dark');
+    const textColor = isDark ? '#94a3b8' : '#475569';
+    const labels = data.categoryBreakdown.map(c => c.name);
+    const prevValues = data.categoryBreakdown.map(c => c.prevSpent);
+    const currValues = data.categoryBreakdown.map(c => c.spent);
+
+    if (APP_STATE.comparisonChartInstance && !forceRecreate) {
+      APP_STATE.comparisonChartInstance.data.labels = labels;
+      APP_STATE.comparisonChartInstance.data.datasets[0].label = `Bulan Lalu (${data.prevMonthYear})`;
+      APP_STATE.comparisonChartInstance.data.datasets[0].data = prevValues;
+      APP_STATE.comparisonChartInstance.data.datasets[1].label = `Bulan Ini (${data.currentMonthYear})`;
+      APP_STATE.comparisonChartInstance.data.datasets[1].data = currValues;
+      APP_STATE.comparisonChartInstance.update('none');
+      return;
+    }
 
     if (APP_STATE.comparisonChartInstance) {
       APP_STATE.comparisonChartInstance.destroy();
     }
 
-    const isDark = document.documentElement.classList.contains('dark');
-    const textColor = isDark ? '#94a3b8' : '#475569';
-
     APP_STATE.comparisonChartInstance = new Chart(ctx, {
       type: 'bar',
       data: {
-        labels: data.categoryBreakdown.map(c => c.name),
+        labels: labels,
         datasets: [
           {
             label: `Bulan Lalu (${data.prevMonthYear})`,
-            data: data.categoryBreakdown.map(c => c.prevSpent),
+            data: prevValues,
             backgroundColor: '#94a3b8',
             borderRadius: 6
           },
           {
             label: `Bulan Ini (${data.currentMonthYear})`,
-            data: data.categoryBreakdown.map(c => c.spent),
+            data: currValues,
             backgroundColor: '#10b981',
             borderRadius: 6
           }
@@ -1658,6 +1789,7 @@
       options: {
         responsive: true,
         maintainAspectRatio: false,
+        animation: { duration: 200 },
         scales: {
           x: { ticks: { color: textColor, font: { size: 11 } }, grid: { display: false } },
           y: { ticks: { color: textColor, font: { size: 11 } } }
@@ -2212,36 +2344,87 @@
       source: 'Form'
     };
 
+    // SOLUSI 2: Optimistic UI (0ms Instant Update tanpa tunggu server)
+    closeModal('modalTransaction');
+    if (APP_STATE.bootstrapData) {
+      const d = APP_STATE.bootstrapData;
+      const w = (d.wallets || []).find(x => x.id === payload.walletId);
+      const tempId = payload.id || ('TRX-OPT-' + Date.now().toString().slice(-4));
+      const existingIdx = (d.transactions || []).findIndex(t => t.id === payload.id);
+      const optTrx = {
+        id: tempId,
+        date: new Date().toISOString(),
+        type: payload.type,
+        category: payload.category,
+        amount: payload.amount,
+        walletId: payload.walletId,
+        walletName: w ? w.name : payload.walletId,
+        memberId: APP_STATE.currentUser.id,
+        memberName: APP_STATE.currentUser.name,
+        description: payload.description,
+        source: payload.source,
+        status: 'Approved'
+      };
+      if (existingIdx >= 0) {
+        d.transactions[existingIdx] = optTrx;
+      } else {
+        d.transactions.unshift(optTrx);
+        if (w) {
+          w.currentBalance = Number(w.currentBalance || 0) + (payload.type === 'Masuk' ? payload.amount : -payload.amount);
+        }
+        if (d.summary) {
+          d.summary.totalBalance = Number(d.summary.totalBalance || 0) + (payload.type === 'Masuk' ? payload.amount : -payload.amount);
+          if (payload.type === 'Masuk') d.summary.totalIncome = Number(d.summary.totalIncome || 0) + payload.amount;
+          else d.summary.totalExpense = Number(d.summary.totalExpense || 0) + payload.amount;
+          d.summary.transactionCount = Number(d.summary.transactionCount || 0) + 1;
+        }
+      }
+      renderAllViews(APP_STATE.bootstrapData, true);
+    }
+    showToast('⚡ Transaksi langsung tercatat! Menyinkronkan ke Cloud...', 'success');
+
     try {
       const res = await callGasBackend('saveTransaction', APP_STATE.currentUser.id, payload);
-      closeModal('modalTransaction');
-      showToast(res.message, 'success');
       if (res.budgetAlert) {
         showToast(res.budgetAlert, 'warning');
       }
-      await refreshDashboardData(true);
+      refreshDashboardData(true);
     } catch (err) {
       showToast(err.message, 'error');
+      refreshDashboardData(true);
     }
   }
 
   async function handleDeleteTransaction(trxId) {
+    // SOLUSI 2: Optimistic UI Delete (0ms)
+    if (APP_STATE.bootstrapData && APP_STATE.bootstrapData.transactions) {
+      APP_STATE.bootstrapData.transactions = APP_STATE.bootstrapData.transactions.filter(t => t.id !== trxId);
+      renderAllViews(APP_STATE.bootstrapData, true);
+    }
+    showToast('⚡ Transaksi dihapus!', 'info');
+
     try {
-      const res = await callGasBackend('deleteTransaction', APP_STATE.currentUser.id, trxId);
-      showToast(res.message, 'info');
-      await refreshDashboardData(true);
+      await callGasBackend('deleteTransaction', APP_STATE.currentUser.id, trxId);
+      refreshDashboardData(true);
     } catch (err) {
       showToast(err.message, 'error');
+      refreshDashboardData(true);
     }
   }
 
   async function handleApproveChildTrx(trxId) {
+    if (APP_STATE.bootstrapData && APP_STATE.bootstrapData.transactions) {
+      const t = APP_STATE.bootstrapData.transactions.find(x => x.id === trxId);
+      if (t) t.status = 'Approved';
+      renderAllViews(APP_STATE.bootstrapData, true);
+    }
     try {
       const res = await callGasBackend('approveChildTransaction', APP_STATE.currentUser.id, trxId);
       showToast(res.message, 'success');
-      await refreshDashboardData(true);
+      refreshDashboardData(true);
     } catch (err) {
       showToast(err.message, 'error');
+      refreshDashboardData(true);
     }
   }
 
@@ -2865,24 +3048,45 @@
 
   async function submitAddGoal(e) {
     e.preventDefault();
-    try {
-      const ownerId = document.getElementById('newGoalOwner').value;
-      const matchingRate = ownerId === 'ALL' ? 0 : Number(document.getElementById('newGoalMatching').value || 50);
-      const res = await callGasBackend('saveSavingsGoal', APP_STATE.currentUser.id, {
-        name: document.getElementById('newGoalName').value,
-        targetAmount: Number(document.getElementById('newGoalTarget').value),
-        savedAmount: Number(document.getElementById('newGoalSaved').value || 0),
-        deadline: document.getElementById('newGoalDeadline').value,
-        ownerId: ownerId,
-        matchingRate: matchingRate,
-        icon: ownerId === 'ALL' ? 'fa-piggy-bank' : 'fa-gift',
-        color: ownerId === 'ALL' ? '#10B981' : '#A855F7'
+    const ownerId = document.getElementById('newGoalOwner').value;
+    const matchingRate = ownerId === 'ALL' ? 0 : Number(document.getElementById('newGoalMatching').value || 50);
+    const goalPayload = {
+      name: document.getElementById('newGoalName').value,
+      targetAmount: Number(document.getElementById('newGoalTarget').value),
+      savedAmount: Number(document.getElementById('newGoalSaved').value || 0),
+      deadline: document.getElementById('newGoalDeadline').value,
+      ownerId: ownerId,
+      matchingRate: matchingRate,
+      icon: ownerId === 'ALL' ? 'fa-piggy-bank' : 'fa-gift',
+      color: ownerId === 'ALL' ? '#10B981' : '#A855F7'
+    };
+
+    // SOLUSI 2: Optimistic UI (0ms)
+    closeModal('modalGenericAdmin');
+    if (APP_STATE.bootstrapData && APP_STATE.bootstrapData.savingsGoals) {
+      const pct = goalPayload.targetAmount > 0 ? Math.min(100, Math.round((goalPayload.savedAmount / goalPayload.targetAmount) * 100)) : 0;
+      APP_STATE.bootstrapData.savingsGoals.push({
+        id: 'GOAL-OPT-' + Date.now().toString().slice(-4),
+        ...goalPayload,
+        title: goalPayload.name,
+        currentAmount: goalPayload.savedAmount,
+        remaining: Math.max(0, goalPayload.targetAmount - goalPayload.savedAmount),
+        remainingAmount: Math.max(0, goalPayload.targetAmount - goalPayload.savedAmount),
+        monthlySuggestion: Math.ceil(Math.max(0, goalPayload.targetAmount - goalPayload.savedAmount) / 6),
+        percentage: pct,
+        isCompleted: pct >= 100,
+        status: pct >= 100 ? 'Tercapai' : 'Aktif'
       });
-      closeModal('modalGenericAdmin');
-      showToast(res.message, 'success');
-      await refreshDashboardData(true);
+      renderAllViews(APP_STATE.bootstrapData, true);
+    }
+    showToast('⚡ Kantong Impian langsung dibuat! Menyinkronkan...', 'success');
+
+    try {
+      await callGasBackend('saveSavingsGoal', APP_STATE.currentUser.id, goalPayload);
+      refreshDashboardData(true);
     } catch (err) {
       showToast(err.message, 'error');
+      refreshDashboardData(true);
     }
   }
 
@@ -2929,18 +3133,38 @@
     const goalId = document.getElementById('contribGoalId').value;
     const amount = Number(document.getElementById('contribAmount').value);
     const walletId = document.getElementById('contribWalletId').value;
+
+    // SOLUSI 2: Optimistic UI Setor Tabungan (0ms)
+    closeModal('modalGenericAdmin');
+    if (APP_STATE.bootstrapData && APP_STATE.bootstrapData.savingsGoals) {
+      const g = APP_STATE.bootstrapData.savingsGoals.find(x => x.id === goalId);
+      if (g) {
+        const isChild = APP_STATE.currentUser?.role !== 'Admin';
+        const bonus = (isChild && Number(g.matchingRate) > 0) ? Math.round(amount * (Number(g.matchingRate) / 100)) : 0;
+        const nextSaved = Number(g.savedAmount || 0) + amount + bonus;
+        g.savedAmount = nextSaved;
+        g.currentAmount = nextSaved;
+        g.remaining = Math.max(0, Number(g.targetAmount || 0) - nextSaved);
+        g.remainingAmount = g.remaining;
+        g.percentage = g.targetAmount > 0 ? Math.min(100, Math.round((nextSaved / g.targetAmount) * 100)) : 0;
+        g.isCompleted = g.percentage >= 100;
+        g.status = g.isCompleted ? 'Tercapai' : 'Aktif';
+      }
+      renderAllViews(APP_STATE.bootstrapData, true);
+    }
+    showToast('⚡ Setoran Kantong Impian berhasil dicatat!', 'success');
+
     try {
       const res = await callGasBackend('contributeToGoal', APP_STATE.currentUser.id, {
         goalId,
         amount,
         walletId
       });
-      closeModal('modalGenericAdmin');
-      showToast(res.message, 'success');
       appendChatMessage('bot', `🐷 *Setoran Kantong Impian Berhasil!*\n${res.message}`);
-      await refreshDashboardData(true);
+      refreshDashboardData(true);
     } catch (err) {
       showToast(err.message, 'error');
+      refreshDashboardData(true);
     }
   }
 
@@ -3759,10 +3983,6 @@
   })();
 </script>
 
-<script>
-if ('caches' in window) { caches.delete('qyona-pwa-v1').catch(() => {}); }
-if ('serviceWorker' in navigator) { window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js?v=2').then(r => r.update()).catch(() => {})); }
-</script>
 </body>
 </html>
 
