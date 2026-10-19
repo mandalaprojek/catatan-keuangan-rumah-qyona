@@ -31,7 +31,6 @@
   <!-- Chart.js untuk Grafik Donut & Perbandingan Kategori -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <style>
-<style>
   @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
 
   :root {
@@ -118,14 +117,15 @@
   }
 </style>
 
-</style>
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#0f766e">
   <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Qyona">
   <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/2830/2830284.png">
 </head>
+<body class="bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 min-h-screen selection:bg-emerald-500 selection:text-white">
   <!-- PWA Install Prompt Banner -->
   <div id="pwaInstallBanner" class="hidden fixed bottom-16 md:bottom-6 left-4 right-4 md:left-auto md:right-6 md:max-w-md z-50 p-4 rounded-2xl bg-white dark:bg-slate-900 border border-emerald-500/40 shadow-2xl animate-fade-in flex items-center justify-between gap-3">
     <div class="flex items-center gap-3">
@@ -133,8 +133,8 @@
         <i class="fa-solid fa-house-chimney-window"></i>
       </div>
       <div>
-        <h4 class="font-extrabold text-xs text-slate-900 dark:text-white">Pasang Aplikasi Qyona</h4>
-        <p class="text-[11px] text-slate-500 dark:text-slate-400">Install ke layar utama HP / Desktop untuk akses instan & cepat</p>
+        <h4 class="font-extrabold text-xs text-slate-900 dark:text-white">Pasang Aplikasi Qyona (PWA)</h4>
+        <p class="text-[11px] text-slate-500 dark:text-slate-400">Install ke layar utama HP / Desktop — Sinkron otomatis dengan Google Sheets</p>
       </div>
     </div>
     <div class="flex items-center gap-1.5 shrink-0">
@@ -142,7 +142,6 @@
       <button onclick="triggerPwaInstall()" class="px-3.5 py-1.5 rounded-xl qyona-gradient text-white text-xs font-bold shadow hover:opacity-95">Install</button>
     </div>
   </div>
-<body class="bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 min-h-screen selection:bg-emerald-500 selection:text-white">
 
   <!-- ========================================================================
        TOAST NOTIFICATION & GLOBAL LOADING INDICATOR
@@ -1059,28 +1058,49 @@
   };
 
   const isGasEnv = typeof google !== 'undefined' && google.script && google.script.run;
+  const GAS_WEB_APP_URL = localStorage.getItem('qyona_gas_webapp_url') ||
+    'https://script.google.com/macros/s/AKfycbyiFGDEzwO9JHr-_H3PBnhB9Zuix-0va-4eDlTBnP6wYaSFDFWEr-1HkZwGYqELb5vm/exec';
 
   /**
-   * Wrapper asinkron untuk memanggil fungsi backend Google Apps Script (`Code.gs`)
-   * atau fallback ke Local Emulator saat dijalankan sebagai pratinjau lokal.
+   * Wrapper asinkron untuk memanggil fungsi backend Google Apps Script (`Code.gs`):
+   * 1. Jika di dalam iframe GAS: gunakan `google.script.run`
+   * 2. Jika di GitHub Pages / PWA mandiri: panggil `GAS_WEB_APP_URL` via HTTP POST JSON RPC agar sinkron real-time dengan Google Sheets
+   * 3. Jika sedang offline / belum diotorisasi: fallback mulus ke `LOCAL_GAS_EMULATOR`
    */
   function callGasBackend(fnName, ...args) {
-    return new Promise((resolve, reject) => {
-      if (isGasEnv) {
+    if (isGasEnv) {
+      return new Promise((resolve, reject) => {
         google.script.run
           .withSuccessHandler(res => resolve(res))
           .withFailureHandler(err => reject(new Error(err.message || String(err))))[fnName](...args);
-      } else {
-        setTimeout(() => {
+      });
+    }
+
+    return fetch(GAS_WEB_APP_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action: 'rpc', fn: fnName, args: args }),
+      redirect: 'follow'
+    })
+      .then(resp => {
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        return resp.json();
+      })
+      .then(json => {
+        if (json && json.ok) return json.data;
+        throw new Error((json && json.error) || 'Respons RPC tidak valid');
+      })
+      .catch(() => {
+        // Fallback ke emulator lokal jika offline atau endpoint GAS sedang menunggu otorisasi awal
+        return new Promise((resolve, reject) => {
           try {
             const result = LOCAL_GAS_EMULATOR[fnName](...args);
             resolve(result);
           } catch (e) {
             reject(e);
           }
-        }, 180);
-      }
-    });
+        });
+      });
   }
 
   /**
@@ -3237,11 +3257,7 @@
 <script>
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js').then((reg) => {
-        console.log('Qyona PWA Service Worker Registered');
-      }).catch((err) => {
-        console.error('PWA Registration Error:', err);
-      });
+      navigator.serviceWorker.register('./sw.js').catch(() => {});
     });
   }
 
@@ -3256,7 +3272,7 @@
   function triggerPwaInstall() {
     if (deferredPrompt) {
       deferredPrompt.prompt();
-      deferredPrompt.userChoice.then((choiceResult) => {
+      deferredPrompt.userChoice.then(() => {
         deferredPrompt = null;
         const banner = document.getElementById('pwaInstallBanner');
         if (banner) banner.classList.add('hidden');

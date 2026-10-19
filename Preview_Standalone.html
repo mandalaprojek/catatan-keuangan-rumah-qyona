@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Qyona â€” Catatan Keuangan Rumah Tangga</title>
+  <title>Qyona — Catatan Keuangan Rumah Tangga</title>
   <!-- Tailwind CSS CDN dengan konfigurasi Dark Mode & Palet Emerald/Teal -->
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
@@ -117,8 +117,31 @@
   }
 </style>
 
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#0f766e">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Qyona">
+  <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/2830/2830284.png">
 </head>
 <body class="bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 min-h-screen selection:bg-emerald-500 selection:text-white">
+  <!-- PWA Install Prompt Banner -->
+  <div id="pwaInstallBanner" class="hidden fixed bottom-16 md:bottom-6 left-4 right-4 md:left-auto md:right-6 md:max-w-md z-50 p-4 rounded-2xl bg-white dark:bg-slate-900 border border-emerald-500/40 shadow-2xl animate-fade-in flex items-center justify-between gap-3">
+    <div class="flex items-center gap-3">
+      <div class="w-10 h-10 rounded-xl qyona-gradient flex items-center justify-center text-white shrink-0 shadow-md">
+        <i class="fa-solid fa-house-chimney-window"></i>
+      </div>
+      <div>
+        <h4 class="font-extrabold text-xs text-slate-900 dark:text-white">Pasang Aplikasi Qyona (PWA)</h4>
+        <p class="text-[11px] text-slate-500 dark:text-slate-400">Install ke layar utama HP / Desktop — Sinkron otomatis dengan Google Sheets</p>
+      </div>
+    </div>
+    <div class="flex items-center gap-1.5 shrink-0">
+      <button onclick="document.getElementById('pwaInstallBanner').classList.add('hidden')" class="px-2.5 py-1.5 text-xs text-slate-400 hover:text-slate-600 font-bold">Nanti</button>
+      <button onclick="triggerPwaInstall()" class="px-3.5 py-1.5 rounded-xl qyona-gradient text-white text-xs font-bold shadow hover:opacity-95">Install</button>
+    </div>
+  </div>
 
   <!-- ========================================================================
        TOAST NOTIFICATION & GLOBAL LOADING INDICATOR
@@ -163,7 +186,7 @@
         </h1>
 
         <p class="text-slate-600 dark:text-slate-300 text-sm sm:text-base leading-relaxed">
-          Tidak perlu lagi repot mengetik form panjang. Kirim pesan seperti <i>"Beli beras 5kg 75rb pakai tunai"</i> atau foto struk belanja bulananâ€”AI otomatis mengkategorikan dan menyatukannya di dashboard keluarga.
+          Tidak perlu lagi repot mengetik form panjang. Kirim pesan seperti <i>"Beli beras 5kg 75rb pakai tunai"</i> atau foto struk belanja bulanan—AI otomatis mengkategorikan dan menyatukannya di dashboard keluarga.
         </p>
 
         <!-- 3 Pilar Inti PRD -->
@@ -197,8 +220,8 @@
             <i class="fa-solid fa-shield-halved"></i> Sistem Akses Keluarga Tertutup (RBAC Maks. 6 Anggota)
           </div>
           <p class="text-slate-600 dark:text-slate-400">
-            â€¢ <b>Admin (Suami & Istri):</b> Akses penuh seluruh rekening, atur budget, approval tagihan & AI Insight keluarga.<br>
-            â€¢ <b>Member Terbatas (Anak):</b> Hanya kategori <i>"Jajan/Anak"</i>, pantau sisa kuota jajan pribadi & ajukan dana tambahan.
+            • <b>Admin (Suami & Istri):</b> Akses penuh seluruh rekening, atur budget, approval tagihan & AI Insight keluarga.<br>
+            • <b>Member Terbatas (Anak):</b> Hanya kategori <i>"Jajan/Anak"</i>, pantau sisa kuota jajan pribadi & ajukan dana tambahan.
           </p>
         </div>
       </div>
@@ -296,10 +319,10 @@
             <span>Ingin langsung uji tampilan RBAC?</span>
             <div class="flex gap-1.5">
               <button onclick="quickDemoLogin('USR-02', '1234')" class="px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 font-semibold hover:bg-emerald-100 transition">
-                ðŸ‘©ðŸ’¼ Demo Istri (Admin)
+                👩💼 Demo Istri (Admin)
               </button>
               <button onclick="quickDemoLogin('USR-03', '1111')" class="px-2.5 py-1 rounded-lg bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 font-semibold hover:bg-purple-100 transition">
-                ðŸ‘¦ðŸŽ’ Demo Anak (Member)
+                👦🎒 Demo Anak (Member)
               </button>
             </div>
           </div>
@@ -309,8 +332,8 @@
 
     <!-- Footer Login -->
     <div class="max-w-6xl w-full mx-auto text-center sm:flex items-center justify-between text-xs text-slate-400 z-10">
-      <p>Â© 2026 Catatan Keuangan Rumah Qyona â€¢ Ditenagai Google Apps Script, Sheets, Drive & Gemini Vision</p>
-      <p class="mt-1 sm:mt-0">Skala Rumah Tangga â€¢ LockService Concurrency Aktif</p>
+      <p>© 2026 Catatan Keuangan Rumah Qyona • Ditenagai Google Apps Script, Sheets, Drive & Gemini Vision</p>
+      <p class="mt-1 sm:mt-0">Skala Rumah Tangga • LockService Concurrency Aktif</p>
     </div>
   </section>
 
@@ -393,7 +416,7 @@
 
     <!-- ======================================================================
          MAIN WORKSPACE: DESKTOP 2-PANEL (KIRI: KONTEN UTAMA, KANAN: STICKY AI CHATBOT)
-         Sesuai PRD Bab 7.1: "Di desktop, layout melebar dua panel â€” Dashboard grafik di kiri, panel Chat AI di kanan."
+         Sesuai PRD Bab 7.1: "Di desktop, layout melebar dua panel — Dashboard grafik di kiri, panel Chat AI di kanan."
          ====================================================================== -->
     <main class="max-w-[1440px] w-full mx-auto px-4 sm:px-6 pt-5 flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
 
@@ -406,7 +429,7 @@
         <div id="childRbacBanner" class="hidden p-4 rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md">
           <div class="flex flex-wrap items-center justify-between gap-3">
             <div class="flex items-center gap-3">
-              <div class="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center text-xl">ðŸŽ’</div>
+              <div class="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center text-xl">🎒</div>
               <div>
                 <h3 class="font-extrabold text-sm">Mode Dompet Pintar Anak (Akses Terbatas RBAC)</h3>
                 <p class="text-xs text-purple-100">Semua catatanmu otomatis masuk kategori <b>Jajan/Anak</b>. Butuh dana ekstra untuk sekolah? Ajukan ke Ayah & Bunda!</p>
@@ -761,16 +784,16 @@
           <!-- Quick Prompt Chips -->
           <div class="px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200/70 dark:border-slate-800 flex items-center gap-1.5 overflow-x-auto no-scrollbar">
             <button onclick="sendQuickPrompt('Beli beras 5kg 75rb pakai tunai')" class="shrink-0 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-emerald-500 transition">
-              ðŸŒ¾ Beli beras 5kg 75rb
+              🌾 Beli beras 5kg 75rb
             </button>
             <button onclick="sendQuickPrompt('Sisa uang makan bulan ini berapa?')" class="shrink-0 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-emerald-500 transition">
-              ðŸ² Sisa uang makan?
+              🍲 Sisa uang makan?
             </button>
             <button onclick="sendQuickPrompt('Isi bensin Pertamax 150rb pakai GoPay')" class="shrink-0 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-emerald-500 transition">
-              â›½ Isi bensin 150rb
+              ⛽ Isi bensin 150rb
             </button>
             <button onclick="sendQuickPrompt('Jajan roti bakar dan susu 25rb')" class="shrink-0 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-emerald-500 transition">
-              ðŸ¥ª Jajan 25rb
+              🥪 Jajan 25rb
             </button>
           </div>
 
@@ -1035,28 +1058,49 @@
   };
 
   const isGasEnv = typeof google !== 'undefined' && google.script && google.script.run;
+  const GAS_WEB_APP_URL = localStorage.getItem('qyona_gas_webapp_url') ||
+    'https://script.google.com/macros/s/AKfycbyiFGDEzwO9JHr-_H3PBnhB9Zuix-0va-4eDlTBnP6wYaSFDFWEr-1HkZwGYqELb5vm/exec';
 
   /**
-   * Wrapper asinkron untuk memanggil fungsi backend Google Apps Script (`Code.gs`)
-   * atau fallback ke Local Emulator saat dijalankan sebagai pratinjau lokal.
+   * Wrapper asinkron untuk memanggil fungsi backend Google Apps Script (`Code.gs`):
+   * 1. Jika di dalam iframe GAS: gunakan `google.script.run`
+   * 2. Jika di GitHub Pages / PWA mandiri: panggil `GAS_WEB_APP_URL` via HTTP POST JSON RPC agar sinkron real-time dengan Google Sheets
+   * 3. Jika sedang offline / belum diotorisasi: fallback mulus ke `LOCAL_GAS_EMULATOR`
    */
   function callGasBackend(fnName, ...args) {
-    return new Promise((resolve, reject) => {
-      if (isGasEnv) {
+    if (isGasEnv) {
+      return new Promise((resolve, reject) => {
         google.script.run
           .withSuccessHandler(res => resolve(res))
           .withFailureHandler(err => reject(new Error(err.message || String(err))))[fnName](...args);
-      } else {
-        setTimeout(() => {
+      });
+    }
+
+    return fetch(GAS_WEB_APP_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action: 'rpc', fn: fnName, args: args }),
+      redirect: 'follow'
+    })
+      .then(resp => {
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        return resp.json();
+      })
+      .then(json => {
+        if (json && json.ok) return json.data;
+        throw new Error((json && json.error) || 'Respons RPC tidak valid');
+      })
+      .catch(() => {
+        // Fallback ke emulator lokal jika offline atau endpoint GAS sedang menunggu otorisasi awal
+        return new Promise((resolve, reject) => {
           try {
             const result = LOCAL_GAS_EMULATOR[fnName](...args);
             resolve(result);
           } catch (e) {
             reject(e);
           }
-        }, 180);
-      }
-    });
+        });
+      });
   }
 
   /**
@@ -1278,7 +1322,7 @@
       ? 'text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
       : 'text-[11px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300';
 
-    document.getElementById('activeUserSubtitle').textContent = `${user.avatar} ${user.name} â€¢ ID WA: ${user.waId || '-'}`;
+    document.getElementById('activeUserSubtitle').textContent = `${user.avatar} ${user.name} • ID WA: ${user.waId || '-'}`;
 
     // Sembunyikan menu "Dompet & Keluarga" jika Member Terbatas (Anak)
     const navManageBtn = document.getElementById('navManageBtn');
@@ -1447,10 +1491,10 @@
       let barColor = c.color;
 
       if (c.isOverBudget) {
-        badgeHtml = `<span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-500/15 text-rose-600 dark:text-rose-400">ðŸš¨ Overbudget ${c.percentage}%</span>`;
+        badgeHtml = `<span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-500/15 text-rose-600 dark:text-rose-400">🚨 Overbudget ${c.percentage}%</span>`;
         barColor = '#EF4444';
       } else if (c.isOverWarning) {
-        badgeHtml = `<span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400">âš ï¸ Mendekati Limit (${c.percentage}%)</span>`;
+        badgeHtml = `<span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400">⚠️ Mendekati Limit (${c.percentage}%)</span>`;
       }
 
       return `
@@ -1660,7 +1704,7 @@
             <i class="fa-solid fa-trash-can text-xs"></i>
           </button>
         `
-        : `<span class="text-[10px] text-slate-400 italic" title="Transaksi telah disetujui Admin">ðŸ”’ Terkunci</span>`;
+        : `<span class="text-[10px] text-slate-400 italic" title="Transaksi telah disetujui Admin">🔒 Terkunci</span>`;
 
       return `
         <div class="py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 hover:bg-slate-50/70 dark:hover:bg-slate-800/30 px-2 rounded-2xl transition">
@@ -1676,11 +1720,11 @@
               </div>
               <div class="flex flex-wrap items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400 mt-1">
                 <span><i class="fa-regular fa-user mr-0.5"></i>${t.memberName}</span>
-                <span>â€¢</span>
+                <span>•</span>
                 <span class="font-semibold text-slate-700 dark:text-slate-300">${t.category}</span>
-                <span>â€¢</span>
+                <span>•</span>
                 <span>${t.walletName}</span>
-                <span>â€¢</span>
+                <span>•</span>
                 <span>${t.date}</span>
                 ${receiptLink}
               </div>
@@ -1720,10 +1764,10 @@
           <i class="fa-solid fa-robot"></i>
         </div>
         <div class="chat-bubble-bot bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 p-3.5 text-xs leading-relaxed shadow-xs max-w-[88%]">
-          <p class="font-extrabold text-teal-700 dark:text-emerald-400 mb-1">Halo ${user.name}! ðŸ‘‹</p>
+          <p class="font-extrabold text-teal-700 dark:text-emerald-400 mb-1">Halo ${user.name}! 👋</p>
           <p class="text-slate-600 dark:text-slate-300">${roleNote}</p>
           <div class="mt-2 pt-2 border-t border-slate-100 dark:border-slate-700/70 text-[11px] text-slate-400">
-            ðŸ’¡ Contoh: <i>"Beli beras 5kg 75rb pakai tunai"</i> atau <i>"Sisa uang makan bulan ini berapa?"</i>
+            💡 Contoh: <i>"Beli beras 5kg 75rb pakai tunai"</i> atau <i>"Sisa uang makan bulan ini berapa?"</i>
           </div>
         </div>
       </div>
@@ -1797,7 +1841,7 @@
         }
       }
     } catch (err) {
-      appendChatMessage('bot', `âš ï¸ Maaf, terjadi kendala saat memproses pesan: ${err.message}`);
+      appendChatMessage('bot', `⚠️ Maaf, terjadi kendala saat memproses pesan: ${err.message}`);
     }
   }
 
@@ -1837,7 +1881,7 @@
     recognition.onstart = () => {
       APP_STATE.isRecordingVoice = true;
       micBtn.classList.add('mic-recording');
-      showToast('ðŸŽ™ï¸ Silakan bicara... (Contoh: "Beli beras 5 kilo 75 ribu")', 'info');
+      showToast('🎙️ Silakan bicara... (Contoh: "Beli beras 5 kilo 75 ribu")', 'info');
     };
 
     recognition.onresult = (event) => {
@@ -1873,7 +1917,7 @@
     if (!file) return;
 
     const statusEl = document.getElementById('ocrUploadStatus');
-    statusEl.textContent = 'â³ Mengompresi foto struk & menjalankan AI OCR Vision...';
+    statusEl.textContent = '⏳ Mengompresi foto struk & menjalankan AI OCR Vision...';
 
     // Kompresi gambar otomatis menggunakan HTML5 Canvas (Sesuai PRD Bab 4.2 & Bab 6)
     const reader = new FileReader();
@@ -1902,7 +1946,7 @@
           });
           APP_STATE.ocrDraftItems = ocrRes.items || [];
           APP_STATE.ocrReceiptUrl = ocrRes.receiptUrl || '';
-          statusEl.innerHTML = `âœ… Foto struk berhasil dikompresi & disimpan ke Drive (<a href="${APP_STATE.ocrReceiptUrl}" target="_blank" class="text-emerald-600 underline">Lihat File</a>).`;
+          statusEl.innerHTML = `✅ Foto struk berhasil dikompresi & disimpan ke Drive (<a href="${APP_STATE.ocrReceiptUrl}" target="_blank" class="text-emerald-600 underline">Lihat File</a>).`;
           renderOcrDraftItems();
         } catch (err) {
           statusEl.textContent = 'Gagal membaca struk: ' + err.message;
@@ -1915,7 +1959,7 @@
 
   async function triggerSampleReceiptOcr() {
     const statusEl = document.getElementById('ocrUploadStatus');
-    statusEl.textContent = 'â³ Mengekstrak item dari struk belanja...';
+    statusEl.textContent = '⏳ Mengekstrak item dari struk belanja...';
     try {
       const ocrRes = await callGasBackend('processReceiptImageOCR', APP_STATE.currentUser.id, {
         base64Data: '',
@@ -1923,7 +1967,7 @@
       });
       APP_STATE.ocrDraftItems = ocrRes.items || [];
       APP_STATE.ocrReceiptUrl = ocrRes.receiptUrl || 'https://drive.google.com/qyona-struk-demo';
-      statusEl.textContent = `âœ… ${APP_STATE.ocrDraftItems.length} item berhasil diekstrak oleh OCR Vision. Silakan koreksi kategori/nominal jika diperlukan.`;
+      statusEl.textContent = `✅ ${APP_STATE.ocrDraftItems.length} item berhasil diekstrak oleh OCR Vision. Silakan koreksi kategori/nominal jika diperlukan.`;
       renderOcrDraftItems();
     } catch (e) {
       showToast(e.message, 'error');
@@ -1999,7 +2043,7 @@
       });
       closeModal('modalOcrScanner');
       showToast(res.message, 'success');
-      appendChatMessage('bot', `ðŸ§¾ *Struk Belanja Tersimpan!*\n${res.savedCount} item berhasil diekstrak via OCR dan dicatat ke Sheet Transaksi.`);
+      appendChatMessage('bot', `🧾 *Struk Belanja Tersimpan!*\n${res.savedCount} item berhasil diekstrak via OCR dan dicatat ke Sheet Transaksi.`);
       await refreshDashboardData(true);
     } catch (e) {
       showToast(e.message, 'error');
@@ -2222,7 +2266,7 @@
                   Jatuh Tempo Tgl ${b.dueDay}
                 </span>
                 <span class="text-[10px] font-bold ${isPaid ? 'text-emerald-600' : 'text-amber-600'}">
-                  â€¢ ${isPaid ? 'Sudah Lunas' : 'Belum Dibayar'}
+                  • ${isPaid ? 'Sudah Lunas' : 'Belum Dibayar'}
                 </span>
               </div>
               <h4 class="font-extrabold text-xs sm:text-sm text-slate-900 dark:text-white">${b.name}</h4>
@@ -2362,7 +2406,7 @@
                 <td class="py-3 px-3 font-mono text-slate-600 dark:text-slate-300">${m.waId || '-'}</td>
                 <td class="py-3 px-3 font-mono text-slate-600 dark:text-slate-300">${m.tgId || '-'}</td>
                 <td class="py-3 px-3 font-bold">${m.role === 'Member' ? formatRp(m.allowanceQuota) : 'Tak Terbatas'}</td>
-                <td class="py-3 px-3"><span class="text-emerald-600 font-bold">â— ${m.status}</span></td>
+                <td class="py-3 px-3"><span class="text-emerald-600 font-bold">● ${m.status}</span></td>
               </tr>
             `).join('')}
           </tbody>
@@ -2411,7 +2455,7 @@
         </div>
         <div>
           <label class="block text-xs font-bold mb-1">Info / Nomor Rekening</label>
-          <input id="newWalInfo" placeholder="Contoh: Bank Jago â€¢â€¢ 9912" class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs">
+          <input id="newWalInfo" placeholder="Contoh: Bank Jago •• 9912" class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs">
         </div>
         <div class="flex justify-end gap-2 pt-2">
           <button type="button" onclick="closeModal('modalGenericAdmin')" class="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-bold">Batal</button>
@@ -2640,10 +2684,10 @@
     const DB = {
       inviteCode: 'QYONA-2026',
       members: [
-        { id: 'USR-01', name: 'Ayah Budi (Suami)', role: 'Admin', waId: '6281234567801', tgId: '1001001', status: 'Aktif', pin: '1234', avatar: 'ðŸ‘¨ðŸ’¼', allowanceQuota: 0 },
-        { id: 'USR-02', name: 'Bunda Qyona (Istri)', role: 'Admin', waId: '6281234567802', tgId: '1001002', status: 'Aktif', pin: '1234', avatar: 'ðŸ‘©ðŸ’¼', allowanceQuota: 0 },
-        { id: 'USR-03', name: 'Kakak Raka (Anak)', role: 'Member', waId: '6281234567803', tgId: '1001003', status: 'Aktif', pin: '1111', avatar: 'ðŸ‘¦ðŸŽ’', allowanceQuota: 600000 },
-        { id: 'USR-04', name: 'Adik Nayla (Anak)', role: 'Member', waId: '6281234567804', tgId: '1001004', status: 'Aktif', pin: '2222', avatar: 'ðŸ‘§ðŸŽ¨', allowanceQuota: 400000 }
+        { id: 'USR-01', name: 'Ayah Budi (Suami)', role: 'Admin', waId: '6281234567801', tgId: '1001001', status: 'Aktif', pin: '1234', avatar: '👨💼', allowanceQuota: 0 },
+        { id: 'USR-02', name: 'Bunda Qyona (Istri)', role: 'Admin', waId: '6281234567802', tgId: '1001002', status: 'Aktif', pin: '1234', avatar: '👩💼', allowanceQuota: 0 },
+        { id: 'USR-03', name: 'Kakak Raka (Anak)', role: 'Member', waId: '6281234567803', tgId: '1001003', status: 'Aktif', pin: '1111', avatar: '👦🎒', allowanceQuota: 600000 },
+        { id: 'USR-04', name: 'Adik Nayla (Anak)', role: 'Member', waId: '6281234567804', tgId: '1001004', status: 'Aktif', pin: '2222', avatar: '👧🎨', allowanceQuota: 400000 }
       ],
       categories: [
         { name: 'Dapur & Makanan', monthlyLimit: 3500000, warnPercent: 80, color: '#F97316', icon: 'fa-utensils', type: 'Keluar' },
@@ -2656,9 +2700,9 @@
         { name: 'Gaji & Pemasukan', monthlyLimit: 0, warnPercent: 100, color: '#10B981', icon: 'fa-sack-dollar', type: 'Masuk' }
       ],
       wallets: [
-        { id: 'WLT-01', name: 'BCA Keluarga', type: 'Bank', initialBalance: 14500000, currentBalance: 18745000, info: 'BCA â€¢â€¢ 8821' },
-        { id: 'WLT-02', name: 'Mandiri Tabungan', type: 'Bank', initialBalance: 8000000, currentBalance: 7350000, info: 'Mandiri â€¢â€¢ 4410' },
-        { id: 'WLT-03', name: 'GoPay / QRIS Rumah', type: 'E-wallet', initialBalance: 1500000, currentBalance: 1185000, info: 'GoPay 0812â€¢â€¢02' },
+        { id: 'WLT-01', name: 'BCA Keluarga', type: 'Bank', initialBalance: 14500000, currentBalance: 18745000, info: 'BCA •• 8821' },
+        { id: 'WLT-02', name: 'Mandiri Tabungan', type: 'Bank', initialBalance: 8000000, currentBalance: 7350000, info: 'Mandiri •• 4410' },
+        { id: 'WLT-03', name: 'GoPay / QRIS Rumah', type: 'E-wallet', initialBalance: 1500000, currentBalance: 1185000, info: 'GoPay 0812••02' },
         { id: 'WLT-04', name: 'Dompet Tunai Dapur', type: 'Tunai', initialBalance: 1500000, currentBalance: 845000, info: 'Cash Pegangan Bunda' },
         { id: 'WLT-05', name: 'Saku Anak (Gopay/Cash)', type: 'E-wallet', initialBalance: 1000000, currentBalance: 755000, info: 'Kuota Jajan Raka & Nayla' }
       ],
@@ -2956,19 +3000,19 @@
           if (!isAdmin) {
             return {
               status: 'QUESTION_ANSWERED',
-              reply: `ðŸ‘¦ Halo *${user.name}*! Sisa kuota uang jajanmu bulan ini adalah *${formatRp(boot.summary.totalBalance)}* dari total kuota *${formatRp(user.allowanceQuota)}*.`
+              reply: `👦 Halo *${user.name}*! Sisa kuota uang jajanmu bulan ini adalah *${formatRp(boot.summary.totalBalance)}* dari total kuota *${formatRp(user.allowanceQuota)}*.`
             };
           }
           const dapur = boot.categoryBreakdown.find(c => c.name === 'Dapur & Makanan');
           if (/makan|dapur/i.test(text) && dapur) {
             return {
               status: 'QUESTION_ANSWERED',
-              reply: `ðŸ“Š *Status Anggaran Dapur & Makanan (${ym})*\nâ€¢ *Sisa Budget:* ${formatRp(Math.max(0, dapur.limit - dapur.spent))}\nâ€¢ *Terpakai:* ${formatRp(dapur.spent)} (${dapur.percentage}% dari ${formatRp(dapur.limit)})`
+              reply: `📊 *Status Anggaran Dapur & Makanan (${ym})*\n• *Sisa Budget:* ${formatRp(Math.max(0, dapur.limit - dapur.spent))}\n• *Terpakai:* ${formatRp(dapur.spent)} (${dapur.percentage}% dari ${formatRp(dapur.limit)})`
             };
           }
           return {
             status: 'QUESTION_ANSWERED',
-            reply: `ðŸ¦ *Ringkasan Kas Keluarga Qyona*\nâ€¢ *Saldo Gabungan:* ${formatRp(boot.summary.totalBalance)}\nâ€¢ *Pengeluaran Bulan Ini:* ${formatRp(boot.summary.totalExpense)} (${boot.summary.budgetUsedPercent}% dari budget)`
+            reply: `🏦 *Ringkasan Kas Keluarga Qyona*\n• *Saldo Gabungan:* ${formatRp(boot.summary.totalBalance)}\n• *Pengeluaran Bulan Ini:* ${formatRp(boot.summary.totalExpense)} (${boot.summary.budgetUsedPercent}% dari budget)`
           };
         }
 
@@ -2978,7 +3022,7 @@
           this.createFundRequest(memberId, { amount: nom, reason: text });
           return {
             status: 'FUND_REQUEST_CREATED',
-            reply: `ðŸ“© Permintaan dana tambahan sebesar *${formatRp(nom)}* untuk _"${text}"_ sudah dikirim ke Ayah & Bunda untuk disetujui!`
+            reply: `📩 Permintaan dana tambahan sebesar *${formatRp(nom)}* untuk _"${text}"_ sudah dikirim ke Ayah & Bunda untuk disetujui!`
           };
         }
 
@@ -2986,7 +3030,7 @@
         if (!amount) {
           return {
             status: 'UNRECOGNIZED',
-            reply: 'ðŸ¤” Maaf, Qyona AI belum menemukan nominal Rupiah di pesanmu.\nContoh: _"Beli beras 5kg 75rb pakai tunai"_ atau _"Sisa uang makan bulan ini berapa?"_'
+            reply: '🤔 Maaf, Qyona AI belum menemukan nominal Rupiah di pesanmu.\nContoh: _"Beli beras 5kg 75rb pakai tunai"_ atau _"Sisa uang makan bulan ini berapa?"_'
           };
         }
 
@@ -3001,7 +3045,7 @@
             status: 'NEEDS_CONFIRMATION',
             pendingMessage: text,
             suggestedCategories: ['Dapur & Makanan', 'Tagihan & Utilitas', 'Transportasi & BBM', 'Jajan/Anak', 'Hiburan & Keluarga', 'Kesehatan & Darurat'],
-            reply: `ðŸ¤” Saya mendeteksi nominal *${formatRp(amount)}*, namun kategorinya belum spesifik. Silakan klik kategori yang sesuai:`
+            reply: `🤔 Saya mendeteksi nominal *${formatRp(amount)}*, namun kategorinya belum spesifik. Silakan klik kategori yang sesuai:`
           };
         }
 
@@ -3017,7 +3061,7 @@
 
         return {
           status: 'SAVED',
-          reply: `âœ… *Tercatat Otomatis!*\nâ€¢ *Item:* ${text}\nâ€¢ *Nominal:* ${formatRp(amount)}\nâ€¢ *Kategori:* ${saved.category}\nâ€¢ *Oleh:* ${user.name}`
+          reply: `✅ *Tercatat Otomatis!*\n• *Item:* ${text}\n• *Nominal:* ${formatRp(amount)}\n• *Kategori:* ${saved.category}\n• *Oleh:* ${user.name}`
         };
       },
 
@@ -3174,7 +3218,7 @@
           tgId: payload.tgId,
           status: 'Aktif',
           pin: payload.pin || '1234',
-          avatar: payload.role === 'Admin' ? 'ðŸ§‘ðŸ’¼' : 'ðŸ§’ðŸŽ’',
+          avatar: payload.role === 'Admin' ? '🧑💼' : '🧒🎒',
           allowanceQuota: payload.allowanceQuota || 400000
         });
         return { success: true, message: `${payload.name} berhasil diundang ke Keluarga Qyona.` };
@@ -3210,6 +3254,32 @@
   })();
 </script>
 
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./sw.js').catch(() => {});
+    });
+  }
+
+  let deferredPrompt;
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredPrompt = e;
+    const banner = document.getElementById('pwaInstallBanner');
+    if (banner) banner.classList.remove('hidden');
+  });
+
+  function triggerPwaInstall() {
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      deferredPrompt.userChoice.then(() => {
+        deferredPrompt = null;
+        const banner = document.getElementById('pwaInstallBanner');
+        if (banner) banner.classList.add('hidden');
+      });
+    }
+  }
+</script>
 </body>
 </html>
 

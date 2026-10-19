@@ -38,12 +38,56 @@ const SHEET_NAMES = {
  */
 function doGet(e) {
   initDatabaseIfNeeded();
+  // Dukungan JSON API untuk sinkronisasi dua arah dengan GitHub Pages PWA
+  if (e && e.parameter && e.parameter.action === 'rpc') {
+    try {
+      const fnName = String(e.parameter.fn || '');
+      const args = e.parameter.args ? JSON.parse(e.parameter.args) : [];
+      const res = executeAllowedRpc(fnName, args);
+      return ContentService.createTextOutput(JSON.stringify({ ok: true, data: res }))
+        .setMimeType(ContentService.MimeType.JSON);
+    } catch (err) {
+      return ContentService.createTextOutput(JSON.stringify({ ok: false, error: err.message || String(err) }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+  }
+
   const template = HtmlService.createTemplateFromFile('Index');
   template.initialInviteCode = getConfig('FAMILY_INVITE_CODE', 'QYONA-2026');
   return template.evaluate()
     .setTitle('Qyona — Catatan Keuangan Rumah Tangga')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
     .addMetaTag('viewport', 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no');
+}
+
+function executeAllowedRpc(fnName, args) {
+  const allowed = {
+    getPublicFamilyProfiles: getPublicFamilyProfiles,
+    authenticateUser: authenticateUser,
+    getAppBootstrapData: getAppBootstrapData,
+    saveTransaction: saveTransaction,
+    deleteTransaction: deleteTransaction,
+    approveChildTransaction: approveChildTransaction,
+    processChatbotMessage: processChatbotMessage,
+    processReceiptImageOCR: processReceiptImageOCR,
+    commitBatchOcrItems: commitBatchOcrItems,
+    generateProactiveAIInsight: generateProactiveAIInsight,
+    markBillAsPaid: markBillAsPaid,
+    saveRoutineBill: saveRoutineBill,
+    createFundRequest: createFundRequest,
+    processFundRequestApproval: processFundRequestApproval,
+    updateCategoryBudget: updateCategoryBudget,
+    saveWalletSource: saveWalletSource,
+    inviteOrUpdateFamilyMember: inviteOrUpdateFamilyMember,
+    saveScriptConfigs: saveScriptConfigs,
+    setupAutomatedTriggers: setupAutomatedTriggers,
+    exportMonthlyCsv: exportMonthlyCsv,
+    generateMonthlyPdfReport: generateMonthlyPdfReport
+  };
+  if (!allowed[fnName]) {
+    throw new Error('Fungsi RPC tidak terdaftar: ' + fnName);
+  }
+  return allowed[fnName].apply(null, Array.isArray(args) ? args : []);
 }
 
 /**
@@ -2050,6 +2094,14 @@ function doPost(e) {
     }
 
     const body = JSON.parse(e.postData.contents);
+
+    // 0. Deteksi Sinkronisasi RPC dari GitHub Pages / PWA Eksternal
+    if (body && body.action === 'rpc') {
+      initDatabaseIfNeeded();
+      const res = executeAllowedRpc(String(body.fn || ''), body.args || []);
+      return ContentService.createTextOutput(JSON.stringify({ ok: true, data: res }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
 
     // A. Deteksi Webhook Telegram Bot API
     if (body.message || body.edited_message) {
