@@ -1858,12 +1858,6 @@
       await callGasBackend('removeCustomLogo', APP_STATE.currentUser.id);
     } catch (e) {}
   }
-        showToast('Gagal menyalin teks.', 'warning');
-      });
-    } else {
-      showToast('Clipboard tidak didukung browser ini.', 'warning');
-    }
-  }
 
   /**
    * ============================================================================
