@@ -32,7 +32,11 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <?!= include('Stylesheet'); ?>
 </head>
-<body class="bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 min-h-screen selection:bg-emerald-500 selection:text-white">
+<body class="bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 min-h-screen selection:bg-emerald-500 selection:text-white relative">
+
+  <!-- Dynamic Custom Wallpaper & Backdrop Layer (Fitur #4) -->
+  <div id="appCustomWallpaperLayer"></div>
+  <div id="appCustomWallpaperOverlay"></div>
 
   <!-- ========================================================================
        TOAST NOTIFICATION & GLOBAL LOADING INDICATOR
@@ -46,8 +50,9 @@
     <!-- Top Bar Login -->
     <div class="max-w-6xl w-full mx-auto flex items-center justify-between z-10">
       <div class="flex items-center gap-3">
-        <div class="w-11 h-11 rounded-2xl qyona-gradient flex items-center justify-center text-white shadow-lg shadow-emerald-600/25">
-          <i class="fa-solid fa-house-chimney-window text-xl"></i>
+        <div id="loginLogoBox" class="w-11 h-11 rounded-2xl qyona-gradient flex items-center justify-center text-white shadow-lg shadow-emerald-600/25 overflow-hidden">
+          <img id="loginCustomLogoImg" class="w-full h-full object-cover hidden" alt="Logo">
+          <i id="loginDefaultLogoIcon" class="fa-solid fa-house-chimney-window text-xl"></i>
         </div>
         <div>
           <div class="flex items-center gap-2">
@@ -234,7 +239,7 @@
   <!-- ========================================================================
        2. MAIN APPLICATION SHELL (RESPONSIVE MOBILE-FIRST + DESKTOP 2-PANEL)
        ======================================================================== -->
-  <div id="mainAppView" class="hidden min-h-screen flex flex-col pb-20 lg:pb-6">
+  <div id="mainAppView" class="hidden min-h-screen flex flex-col pb-28 lg:pb-8">
 
     <!-- TOP NAVIGATION HEADER -->
     <header class="sticky top-0 z-40 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-slate-200/80 dark:border-slate-800">
@@ -242,8 +247,9 @@
         
         <!-- Brand & Active Role Badge -->
         <div class="flex items-center gap-3">
-          <div class="w-10 h-10 rounded-xl qyona-gradient flex items-center justify-center text-white shadow-md shadow-emerald-600/20">
-            <i class="fa-solid fa-wallet text-lg"></i>
+          <div id="mainLogoBox" onclick="openAppearanceModal()" class="w-10 h-10 rounded-xl qyona-gradient flex items-center justify-center text-white shadow-md shadow-emerald-600/20 overflow-hidden cursor-pointer" title="Ganti Wallpaper & Logo">
+            <img id="mainCustomLogoImg" class="w-full h-full object-cover hidden" alt="Logo">
+            <i id="mainDefaultLogoIcon" class="fa-solid fa-wallet text-lg"></i>
           </div>
           <div>
             <div class="flex items-center gap-2">
@@ -300,6 +306,11 @@
           <!-- Tombol Refresh Sinkronisasi Sheet -->
           <button onclick="refreshDashboardData(true)" id="btnSyncIndicator" class="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-emerald-600 transition" title="Sinkronisasi Real-Time dengan Google Sheets">
             <i id="syncIcon" class="fa-solid fa-arrows-rotate text-xs"></i>
+          </button>
+
+          <!-- Ganti Wallpaper & Logo (Google Drive) -->
+          <button type="button" onclick="openAppearanceModal()" class="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-emerald-600 transition" title="Ganti Wallpaper & Logo (Google Drive)">
+            <i class="fa-solid fa-palette text-xs"></i>
           </button>
 
           <!-- Toggle Dark Mode -->
@@ -384,6 +395,9 @@
           </button>
           <button type="button" onclick="openAddCategoryModal()" class="shrink-0 px-2 py-0.5 rounded-full bg-purple-50 dark:bg-purple-950/40 border border-purple-300 dark:border-purple-800 font-bold text-purple-700 dark:text-purple-300">
             ➕ Kategori Baru
+          </button>
+          <button type="button" onclick="openAppearanceModal()" class="shrink-0 px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-semibold text-slate-700 dark:text-slate-300 hover:border-emerald-500">
+            🖼️ Wallpaper
           </button>
         </div>
       </div>
@@ -868,34 +882,6 @@
             <div id="chatCategoryChips" class="flex flex-wrap gap-1.5"></div>
           </div>
 
-          <!-- ================================================================
-               PANEL HISTORI CHAT AI & QUICK RE-RUN (PERMINTAAN FITUR #4)
-               Menampilkan riwayat obrolan & perintah terakhir di bagian bawah
-               ================================================================ -->
-          <div id="chatHistoryContainer" class="border-t border-slate-200/80 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/80 transition-all duration-300">
-            <!-- Header Accordion Histori -->
-            <div class="px-3.5 py-2 flex items-center justify-between cursor-pointer select-none border-b border-slate-200/60 dark:border-slate-800/80" onclick="toggleChatHistoryDrawer()">
-              <div class="flex items-center gap-2">
-                <span class="w-6 h-6 rounded-lg bg-teal-500/10 text-teal-600 dark:text-emerald-400 flex items-center justify-center text-xs">
-                  <i class="fa-solid fa-clock-rotate-left"></i>
-                </span>
-                <span class="text-xs font-extrabold text-slate-800 dark:text-slate-200">Histori Perintah AI</span>
-                <span id="chatHistoryCountBadge" class="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300">0</span>
-              </div>
-              <div class="flex items-center gap-2">
-                <button type="button" onclick="event.stopPropagation(); clearChatHistoryUI()" class="text-[10px] text-slate-400 hover:text-rose-500 font-bold" title="Bersihkan Tampilan">
-                  Hapus
-                </button>
-                <i id="chatHistoryChevron" class="fa-solid fa-chevron-up text-xs text-slate-400 transition-transform duration-200"></i>
-              </div>
-            </div>
-
-            <!-- List Histori Chat (Scrollable Compact Cards) -->
-            <div id="chatHistoryList" class="p-2.5 max-h-40 overflow-y-auto space-y-1.5 text-xs">
-              <!-- Diisi dinamis oleh JS -->
-            </div>
-          </div>
-
           <!-- Input Bar dengan Animasi Garis Tepi RGB Melingkar Bergerak (Permintaan Fitur #3) -->
           <div class="p-3 bg-white dark:bg-slate-900 border-t border-slate-200/80 dark:border-slate-800">
             <form onsubmit="handleChatSubmit(event)" class="space-y-1.5">
@@ -930,6 +916,31 @@
                 </div>
               </div>
             </form>
+          </div>
+
+          <!-- ================================================================
+               PANEL HISTORI CHAT AI (DIPINDAHKAN KE BAWAH KOLOM TEKS INPUT)
+               Sinkron ke Database Google Sheets (Maksimal 15 Circular FIFO)
+               ================================================================ -->
+          <div id="chatHistoryContainer" class="border-t border-slate-200/80 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/80 transition-all duration-300">
+            <!-- Header Accordion Histori -->
+            <div class="px-3.5 py-2 flex items-center justify-between cursor-pointer select-none border-b border-slate-200/60 dark:border-slate-800/80" onclick="toggleChatHistoryDrawer()">
+              <div class="flex items-center gap-2">
+                <span class="w-6 h-6 rounded-lg bg-teal-500/10 text-teal-600 dark:text-emerald-400 flex items-center justify-center text-xs">
+                  <i class="fa-solid fa-clock-rotate-left"></i>
+                </span>
+                <span class="text-xs font-extrabold text-slate-800 dark:text-slate-200">Histori Perintah AI</span>
+                <span id="chatHistoryCountBadge" class="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300">0</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <i id="chatHistoryChevron" class="fa-solid fa-chevron-up text-xs text-slate-400 transition-transform duration-200"></i>
+              </div>
+            </div>
+
+            <!-- List Histori Chat (Scrollable Compact Cards) -->
+            <div id="chatHistoryList" class="p-2.5 max-h-40 overflow-y-auto space-y-1.5 text-xs">
+              <!-- Diisi dinamis oleh JS -->
+            </div>
           </div>
         </div>
       </aside>
@@ -1125,6 +1136,91 @@
         </button>
       </div>
       <div id="modalGenericBody"></div>
+    </div>
+  </div>
+
+  <!-- ========================================================================
+       MODAL 5: GANTI WALLPAPER LATAR BELAKANG & LOGO KELUARGA (FITUR #4)
+       ======================================================================== -->
+  <div id="modalCustomAppearance" class="fixed inset-0 z-50 hidden bg-slate-950/65 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-slate-900 rounded-3xl max-w-md w-full p-5 sm:p-6 border border-slate-200 dark:border-slate-800 shadow-2xl animate-fade-in max-h-[90vh] overflow-y-auto">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+        <div class="flex items-center gap-2">
+          <span class="w-8 h-8 rounded-xl bg-teal-500/10 text-teal-600 dark:text-emerald-400 flex items-center justify-center text-sm">
+            <i class="fa-solid fa-palette"></i>
+          </span>
+          <div>
+            <h3 class="font-extrabold text-sm sm:text-base text-slate-900 dark:text-white leading-tight">Ganti Wallpaper & Logo</h3>
+            <p class="text-[11px] text-slate-500">Tersimpan otomatis di Google Drive Anda</p>
+          </div>
+        </div>
+        <button type="button" onclick="closeModal('modalCustomAppearance')" class="w-8 h-8 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-slate-800 dark:hover:text-white flex items-center justify-center">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <div class="space-y-4 pt-4">
+        <!-- 1. Ganti Wallpaper Latar Belakang -->
+        <div class="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/70 dark:border-slate-700/60 space-y-3">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-black text-slate-900 dark:text-white flex items-center gap-1.5">
+              <i class="fa-solid fa-image text-emerald-600"></i> Wallpaper Latar Belakang
+            </span>
+            <span class="text-[10px] text-slate-400">Pribadi per Akun</span>
+          </div>
+
+          <!-- Preview Wallpaper Saat Ini -->
+          <div id="wallpaperPreviewBox" class="relative w-full h-28 rounded-xl bg-slate-200 dark:bg-slate-700 overflow-hidden flex items-center justify-center border border-dashed border-slate-300 dark:border-slate-600">
+            <img id="wallpaperPreviewImg" class="w-full h-full object-cover hidden" alt="Wallpaper Preview">
+            <div id="wallpaperEmptyNotice" class="text-center text-slate-400 text-xs p-2">
+              <i class="fa-regular fa-image text-2xl block mb-1 opacity-50"></i>
+              <span>Belum menggunakan wallpaper foto</span>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <label class="flex-1 py-2 px-3 rounded-xl qyona-gradient text-white text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer shadow-sm hover:opacity-95 transition">
+              <i class="fa-solid fa-cloud-arrow-up"></i>
+              <span>Pilih Foto dari HP</span>
+              <input type="file" id="wallpaperFileInput" accept="image/*" class="hidden" onchange="handleWallpaperSelected(event)">
+            </label>
+            <button type="button" onclick="handleResetWallpaper()" class="px-3 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold hover:bg-rose-100 hover:text-rose-600 transition" title="Reset ke Polos">
+              Reset
+            </button>
+          </div>
+          <p id="wallpaperUploadStatus" class="text-[10px] text-emerald-600 font-bold hidden"></p>
+        </div>
+
+        <!-- 2. Ganti Logo Keluarga (Khusus Admin) -->
+        <div id="sectionCustomLogoBox" class="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/70 dark:border-slate-700/60 space-y-3">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-black text-slate-900 dark:text-white flex items-center gap-1.5">
+              <i class="fa-solid fa-shield-halved text-amber-500"></i> Logo Keluarga Sendiri
+            </span>
+            <span id="badgeLogoAdminOnly" class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300">Khusus Admin</span>
+          </div>
+
+          <div class="flex items-center gap-3">
+            <div class="w-14 h-14 rounded-2xl bg-slate-200 dark:bg-slate-700 overflow-hidden flex items-center justify-center shrink-0 border border-slate-300 dark:border-slate-600">
+              <img id="logoPreviewImg" class="w-full h-full object-cover hidden" alt="Logo Preview">
+              <i id="logoDefaultPreviewIcon" class="fa-solid fa-house-chimney-window text-2xl text-teal-600"></i>
+            </div>
+            <div class="flex-1 space-y-1.5">
+              <p class="text-[11px] text-slate-600 dark:text-slate-400">Ganti logo rumah bawaan dengan foto logo/keluarga Anda sendiri.</p>
+              <div class="flex items-center gap-2">
+                <label id="btnUploadLogoLabel" class="py-1.5 px-2.5 rounded-lg bg-emerald-600 text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer hover:bg-emerald-700 transition">
+                  <i class="fa-solid fa-upload"></i> Upload Logo
+                  <input type="file" id="logoFileInput" accept="image/*" class="hidden" onchange="handleLogoSelected(event)">
+                </label>
+                <button type="button" id="btnResetLogo" onclick="handleResetLogo()" class="py-1.5 px-2.5 rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 text-[11px] font-bold hover:bg-rose-100 hover:text-rose-600 transition">
+                  Reset
+                </button>
+              </div>
+            </div>
+          </div>
+          <p id="logoUploadStatus" class="text-[10px] text-emerald-600 font-bold hidden"></p>
+        </div>
+      </div>
     </div>
   </div>
 

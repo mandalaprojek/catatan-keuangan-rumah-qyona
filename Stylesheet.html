@@ -158,4 +158,53 @@
   .history-item-hover:hover {
     transform: translateX(3px);
   }
+
+  /* Custom Wallpaper & Backdrop Overlay */
+  #appCustomWallpaperLayer {
+    position: fixed;
+    inset: 0;
+    z-index: -10;
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    opacity: 0;
+    transition: opacity 0.5s ease-in-out;
+    pointer-events: none;
+  }
+  #appCustomWallpaperOverlay {
+    position: fixed;
+    inset: 0;
+    z-index: -9;
+    pointer-events: none;
+    background: rgba(248, 250, 252, 0.88);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    transition: background 0.3s ease;
+  }
+  .dark #appCustomWallpaperOverlay {
+    background: rgba(15, 23, 42, 0.88);
+  }
+
+  /* Transaksi Dibatalkan */
+  .trx-cancelled {
+    opacity: 0.65;
+    background-color: rgba(241, 245, 249, 0.5);
+  }
+  .dark .trx-cancelled {
+    background-color: rgba(30, 41, 59, 0.4);
+  }
+  .trx-cancelled-text {
+    text-decoration: line-through;
+    text-decoration-color: #ef4444;
+  }
+
+  /* Mobile Button Touch Feedback */
+  @media (max-width: 768px) {
+    .touch-action-btn:active {
+      transform: scale(0.94);
+    }
+    .mobile-tight-card {
+      padding: 0.875rem !important;
+    }
+  }
 </style>

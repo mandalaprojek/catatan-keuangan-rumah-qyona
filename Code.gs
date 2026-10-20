@@ -31,7 +31,8 @@ const SHEET_NAMES = {
   TAGIHAN: 'Tagihan Rutin',
   INSIGHT: 'Riwayat Chat & AI Insight',
   PENGAJUAN: 'Pengajuan Dana',
-  GOALS: 'Target Tabungan & Impian'
+  GOALS: 'Target Tabungan & Impian',
+  AI_HISTORI: 'AI_Histori'
 };
 
 /**
@@ -90,7 +91,14 @@ function executeAllowedRpc(fnName, args) {
     testInteractiveBotNotification: testInteractiveBotNotification,
     createCustomCategory: createCustomCategory,
     deleteBatchTransactions: deleteBatchTransactions,
-    learnCategoryKeywordRule: learnCategoryKeywordRule
+    learnCategoryKeywordRule: learnCategoryKeywordRule,
+    getAIChatHistory: getAIChatHistory,
+    saveAIChatHistoryEntry: saveAIChatHistoryEntry,
+    deleteAIChatHistoryEntry: deleteAIChatHistoryEntry,
+    uploadUserWallpaper: uploadUserWallpaper,
+    removeUserWallpaper: removeUserWallpaper,
+    uploadCustomLogo: uploadCustomLogo,
+    removeCustomLogo: removeCustomLogo
   };
   if (!allowed[fnName]) {
     throw new Error('Fungsi RPC tidak terdaftar: ' + fnName);
@@ -99,6 +107,7 @@ function executeAllowedRpc(fnName, args) {
     getPublicFamilyProfiles: true,
     authenticateUser: true,
     getAppBootstrapData: true,
+    getAIChatHistory: true,
     processReceiptImageOCR: true,
     exportMonthlyCsv: true,
     generateMonthlyPdfReport: true,
@@ -415,6 +424,14 @@ function initDatabaseIfNeeded(forceCheck) {
       styleHeaderRow(shGoals, 10);
     }
 
+    // 9. Sheet Riwayat Perintah AI (Maksimal 15 Baris Circular FIFO)
+    let shAiHistori = ss.getSheetByName(SHEET_NAMES.AI_HISTORI);
+    if (!shAiHistori) {
+      shAiHistori = ss.insertSheet(SHEET_NAMES.AI_HISTORI);
+      shAiHistori.appendRow(['ID', 'Waktu', 'ID Anggota', 'Nama Anggota', 'Perintah Teks', 'Status', 'Ringkasan']);
+      styleHeaderRow(shAiHistori, 7);
+    }
+
     // Hapus Sheet1 default jika masih kosong dan ada sheet lain
     const defaultSheet = ss.getSheetByName('Sheet1');
     if (defaultSheet && ss.getSheets().length > 1) {
@@ -648,7 +665,7 @@ function getAppBootstrapData(memberId, selectedMonthYear) {
   const deltaByWallet = {};
   for (let i = 1; i < trxData.length; i++) {
     const tr = trxTrxRow(trxData[i]);
-    if (!tr.id) continue;
+    if (!tr.id || tr.status === 'Dibatalkan') continue;
     deltaByWallet[tr.walletId] = (deltaByWallet[tr.walletId] || 0) + (tr.type === 'Masuk' ? tr.amount : -tr.amount);
   }
 
@@ -706,7 +723,7 @@ function getAppBootstrapData(memberId, selectedMonthYear) {
       receiptUrl: String(r[8] || ''),
       source: String(r[9] || 'Chat'),
       approvalStatus: String(r[10] || 'Disetujui'),
-      canEdit: isAdmin || (trxOwnerId === currentUser.id && String(r[10]) !== 'Disetujui')
+      canEdit: String(r[10]) !== 'Dibatalkan' && (isAdmin || (trxOwnerId === currentUser.id && String(r[10]) !== 'Disetujui'))
     });
   }
 
@@ -721,6 +738,7 @@ function getAppBootstrapData(memberId, selectedMonthYear) {
   const prevSpendingByCategory = {};
 
   currentMonthTrx.forEach(t => {
+    if (t.approvalStatus === 'Dibatalkan') return;
     if (t.type === 'Masuk') {
       totalIncome += t.amount;
     } else {
@@ -730,6 +748,7 @@ function getAppBootstrapData(memberId, selectedMonthYear) {
   });
 
   prevMonthTrx.forEach(t => {
+    if (t.approvalStatus === 'Dibatalkan') return;
     if (t.type === 'Keluar') {
       prevSpendingByCategory[t.category] = (prevSpendingByCategory[t.category] || 0) + t.amount;
     }
@@ -924,6 +943,9 @@ function getAppBootstrapData(memberId, selectedMonthYear) {
     insights: insights,
     savingsGoals: savingsGoals,
     familyMembers: isAdmin ? allMembers.map(sanitizeMemberForClient) : [sanitizeMemberForClient(currentUser)],
+    userWallpaper: PropertiesService.getScriptProperties().getProperty('QYONA_WALLPAPER_' + currentUser.id) || '',
+    customLogo: PropertiesService.getScriptProperties().getProperty('QYONA_CUSTOM_LOGO_URL') || '',
+    chatHistory: getAIChatHistory(currentUser.id),
     systemConfig: isAdmin ? {
       hasGeminiKey: Boolean(getConfig('GEMINI_API_KEY', '')),
       hasTelegramToken: Boolean(getConfig('TELEGRAM_BOT_TOKEN', '')),
@@ -958,7 +980,7 @@ function recalculateAllWalletBalances(ss) {
   const deltaByWallet = {};
   for (let i = 1; i < trxData.length; i++) {
     const r = trxTrxRow(trxData[i]);
-    if (!r.id) continue;
+    if (!r.id || r.status === 'Dibatalkan') continue;
     if (!deltaByWallet[r.walletId]) deltaByWallet[r.walletId] = 0;
     if (r.type === 'Masuk') {
       deltaByWallet[r.walletId] += r.amount;
@@ -985,7 +1007,8 @@ function trxTrxRow(r) {
     id: String(r[0] || ''),
     type: String(r[2] || 'Keluar'),
     amount: Number(r[3] || 0),
-    walletId: String(r[6] || 'WLT-01')
+    walletId: String(r[6] || 'WLT-01'),
+    status: String(r[10] || 'Disetujui')
   };
 }
 
@@ -1125,15 +1148,15 @@ function deleteTransaction(memberId, transactionId) {
         const status = String(data[i][10] || 'Disetujui');
         if (!isAdmin) {
           if (ownerId !== user.id) {
-            throw new Error('RBAC: Tidak dapat menghapus transaksi anggota lain.');
+            throw new Error('RBAC: Tidak dapat membatalkan transaksi anggota lain.');
           }
           if (status === 'Disetujui') {
-            throw new Error('RBAC: Transaksi yang sudah disetujui Admin tidak bisa dihapus.');
+            throw new Error('RBAC: Transaksi yang sudah disetujui Admin tidak bisa dibatalkan.');
           }
         }
-        shTrx.deleteRow(i + 1);
+        shTrx.getRange(i + 1, 11).setValue('Dibatalkan');
         recalculateAllWalletBalances(ss);
-        return { success: true, message: `Transaksi ${transactionId} telah dihapus.` };
+        return { success: true, message: `Transaksi ${transactionId} berhasil dibatalkan dan saldo dompet telah dikembalikan.` };
       }
     }
     throw new Error('Transaksi tidak ditemukan.');
@@ -1242,6 +1265,7 @@ function processChatbotMessage(memberId, rawMessage, confirmedCategory) {
     const actionCmdResult = tryExecuteChatActionCommand(ss, user, text);
     if (actionCmdResult) {
       logChatAndInsight(ss, user.id, text, actionCmdResult.reply, 'Harian', 0, 'Dieksekusi');
+      try { saveAIChatHistoryEntry(user.id, { prompt: text, status: 'ACTION_EXECUTED', replySnippet: actionCmdResult.reply }); } catch (e) {}
       return actionCmdResult;
     }
   }
@@ -1374,6 +1398,9 @@ function processChatbotMessage(memberId, rawMessage, confirmedCategory) {
   }
 
   logChatAndInsight(ss, user.id, text, replyMsg, 'Harian', 0, 'Tersimpan');
+  try {
+    saveAIChatHistoryEntry(user.id, { prompt: text, status: 'SAVED', replySnippet: replyMsg });
+  } catch (e) {}
 
   return {
     status: 'SAVED',
@@ -1598,13 +1625,12 @@ function deleteBatchTransactions(memberId, transactionIds) {
     const isAdmin = user.role === 'Admin';
     let deletedCount = 0;
 
-    // Hapus dari baris terbawah ke atas agar indeks baris tidak bergeser
-    for (let i = data.length - 1; i >= 1; i--) {
+    for (let i = 1; i < data.length; i++) {
       const rowId = String(data[i][0]);
       if (ids.includes(rowId)) {
         const ownerId = String(data[i][7]);
         if (isAdmin || ownerId === user.id) {
-          shTrx.deleteRow(i + 1);
+          shTrx.getRange(i + 1, 11).setValue('Dibatalkan');
           deletedCount++;
         }
       }
@@ -1671,6 +1697,226 @@ function autoLearnFromConfirmedText(text, categoryName) {
       PropertiesService.getScriptProperties().setProperty('QYONA_AI_LEARNED_RULES', JSON.stringify(map));
     }
   } catch (e) {}
+}
+
+/**
+ * ============================================================================
+ * AI CHAT HISTORY MANAGEMENT DI DATABASE GOOGLE SHEETS (MAKSIMAL 15 FIFO)
+ * ============================================================================
+ */
+function getAIChatHistory(memberId) {
+  try {
+    const ss = getSpreadsheet();
+    let sh = ss.getSheetByName(SHEET_NAMES.AI_HISTORI);
+    if (!sh) {
+      initDatabaseIfNeeded(true);
+      sh = ss.getSheetByName(SHEET_NAMES.AI_HISTORI);
+    }
+    if (!sh) return [];
+    const data = sh.getDataRange().getValues();
+    const history = [];
+    for (let i = 1; i < data.length; i++) {
+      const r = data[i];
+      if (!r[0]) continue;
+      history.push({
+        id: String(r[0]),
+        timestamp: String(r[1]),
+        memberId: String(r[2]),
+        memberName: String(r[3]),
+        prompt: String(r[4]),
+        status: String(r[5]),
+        replySnippet: String(r[6] || '')
+      });
+    }
+    return history.reverse().slice(0, 15);
+  } catch (e) {
+    return [];
+  }
+}
+
+function saveAIChatHistoryEntry(memberId, entry) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    const user = verifyMemberById(memberId);
+    if (!user) throw new Error('Akses tidak sah.');
+
+    const ss = getSpreadsheet();
+    let sh = ss.getSheetByName(SHEET_NAMES.AI_HISTORI);
+    if (!sh) {
+      initDatabaseIfNeeded(true);
+      sh = ss.getSheetByName(SHEET_NAMES.AI_HISTORI);
+    }
+    if (!sh) return { success: false };
+
+    const newId = 'HIST-' + Utilities.formatDate(new Date(), 'Asia/Jakarta', 'ddHHmmss') + '-' + Math.floor(Math.random() * 90 + 10);
+    const timeStr = Utilities.formatDate(new Date(), 'Asia/Jakarta', 'HH:mm');
+    const promptText = String(entry.prompt || '').trim();
+    const status = String(entry.status || 'SAVED');
+    const replySnippet = String(entry.replySnippet || '').replace(/\*/g, '').replace(/<[^>]*>?/gm, '').slice(0, 80);
+
+    sh.appendRow([
+      newId,
+      timeStr,
+      user.id,
+      user.name,
+      promptText,
+      status,
+      replySnippet
+    ]);
+
+    // Sistem Maksimal 15 Item (Circular Buffer / FIFO)
+    // Jika baris lebih dari 16 (1 baris header + 15 baris data), hapus baris data terlama (baris 2)
+    while (sh.getLastRow() > 16) {
+      sh.deleteRow(2);
+    }
+
+    return { success: true, id: newId };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function deleteAIChatHistoryEntry(memberId, historyId) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    const user = verifyMemberById(memberId);
+    if (!user) throw new Error('Akses tidak sah.');
+
+    const ss = getSpreadsheet();
+    const sh = ss.getSheetByName(SHEET_NAMES.AI_HISTORI);
+    if (!sh) return { success: true };
+
+    const data = sh.getDataRange().getValues();
+    for (let i = 1; i < data.length; i++) {
+      if (String(data[i][0]) === String(historyId)) {
+        sh.deleteRow(i + 1);
+        return { success: true, message: 'Item histori berhasil dihapus.' };
+      }
+    }
+    return { success: true, message: 'Item tidak ditemukan.' };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * ============================================================================
+ * WALLPAPER & CUSTOM LOGO KE GOOGLE DRIVE PRIBADI (FITUR #4)
+ * ============================================================================
+ */
+function getOrCreateQyonaAssetsFolder() {
+  const folderName = 'Qyona Finance Assets';
+  const folders = DriveApp.getFoldersByName(folderName);
+  if (folders.hasNext()) return folders.next();
+  const folder = DriveApp.createFolder(folderName);
+  try {
+    folder.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  } catch (e) {}
+  return folder;
+}
+
+function uploadUserWallpaper(memberId, base64Data, mimeType) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const user = verifyMemberById(memberId);
+    if (!user) throw new Error('Akses tidak sah.');
+
+    let cleanBase64 = String(base64Data || '');
+    if (cleanBase64.indexOf(',') > -1) {
+      cleanBase64 = cleanBase64.split(',')[1];
+    }
+    const bytes = Utilities.base64Decode(cleanBase64);
+    const mType = mimeType || 'image/jpeg';
+    const blob = Utilities.newBlob(bytes, mType, 'wallpaper_' + user.id + '.jpg');
+
+    const folder = getOrCreateQyonaAssetsFolder();
+    const existing = folder.getFilesByName('wallpaper_' + user.id + '.jpg');
+    while (existing.hasNext()) {
+      try { existing.next().setTrashed(true); } catch (e) {}
+    }
+
+    const file = folder.createFile(blob);
+    try {
+      file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    } catch (e) {}
+
+    const directUrl = 'https://drive.google.com/thumbnail?id=' + file.getId() + '&sz=w1920';
+    PropertiesService.getScriptProperties().setProperty('QYONA_WALLPAPER_' + user.id, directUrl);
+    invalidateServerCache();
+
+    return {
+      success: true,
+      wallpaperUrl: directUrl,
+      fileId: file.getId(),
+      message: 'Foto latar belakang berhasil disimpan di Google Drive.'
+    };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function removeUserWallpaper(memberId) {
+  const user = verifyMemberById(memberId);
+  if (!user) throw new Error('Akses tidak sah.');
+  PropertiesService.getScriptProperties().deleteProperty('QYONA_WALLPAPER_' + user.id);
+  invalidateServerCache();
+  return { success: true, message: 'Wallpaper telah direset ke tema standar.' };
+}
+
+function uploadCustomLogo(adminId, base64Data, mimeType) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const admin = verifyMemberById(adminId);
+    if (!admin || admin.role !== 'Admin') {
+      throw new Error('RBAC: Hanya Admin yang dapat mengganti logo aplikasi.');
+    }
+
+    let cleanBase64 = String(base64Data || '');
+    if (cleanBase64.indexOf(',') > -1) {
+      cleanBase64 = cleanBase64.split(',')[1];
+    }
+    const bytes = Utilities.base64Decode(cleanBase64);
+    const mType = mimeType || 'image/png';
+    const blob = Utilities.newBlob(bytes, mType, 'custom_family_logo.png');
+
+    const folder = getOrCreateQyonaAssetsFolder();
+    const existing = folder.getFilesByName('custom_family_logo.png');
+    while (existing.hasNext()) {
+      try { existing.next().setTrashed(true); } catch (e) {}
+    }
+
+    const file = folder.createFile(blob);
+    try {
+      file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    } catch (e) {}
+
+    const directUrl = 'https://drive.google.com/thumbnail?id=' + file.getId() + '&sz=w512';
+    PropertiesService.getScriptProperties().setProperty('QYONA_CUSTOM_LOGO_URL', directUrl);
+    invalidateServerCache();
+
+    return {
+      success: true,
+      logoUrl: directUrl,
+      fileId: file.getId(),
+      message: 'Logo kustom berhasil disimpan di Google Drive.'
+    };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function removeCustomLogo(adminId) {
+  const admin = verifyMemberById(adminId);
+  if (!admin || admin.role !== 'Admin') {
+    throw new Error('RBAC: Hanya Admin yang dapat mereset logo.');
+  }
+  PropertiesService.getScriptProperties().deleteProperty('QYONA_CUSTOM_LOGO_URL');
+  invalidateServerCache();
+  return { success: true, message: 'Logo berhasil dikembalikan ke logo bawaan Qyona.' };
 }
 
 /**
