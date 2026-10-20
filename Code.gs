@@ -87,7 +87,10 @@ function executeAllowedRpc(fnName, args) {
     saveSavingsGoal: saveSavingsGoal,
     contributeToGoal: contributeToGoal,
     registerTelegramWebhook: registerTelegramWebhook,
-    testInteractiveBotNotification: testInteractiveBotNotification
+    testInteractiveBotNotification: testInteractiveBotNotification,
+    createCustomCategory: createCustomCategory,
+    deleteBatchTransactions: deleteBatchTransactions,
+    learnCategoryKeywordRule: learnCategoryKeywordRule
   };
   if (!allowed[fnName]) {
     throw new Error('Fungsi RPC tidak terdaftar: ' + fnName);
@@ -1209,11 +1212,13 @@ function checkCategoryBudgetWarning(ss, categoryName) {
  */
 
 /**
- * Proses pesan obrolan dari Web App atau Webhook WhatsApp/Telegram
- * Mendukung:
- * 1. Pertanyaan seputar keuangan ("Sisa uang makan bulan ini berapa?", "Saldo keluarga berapa?")
- * 2. Input transaksi1 atau banyak item sekaligus ("Beli beras 5kg 75rb dan gas 22rb pakai tunai")
- * 3. Permintaan dana tambahan dari Anak ("Minta uang tambahan 50rb buat beli buku")
+ * Proses pesan obrolan dari Web App atau Webhook WhatsApp/Telegram (Upgrade AI Qyona v2.2 Super-Cerdas)
+ * Mendukung 5 Fitur Utama:
+ * 1. Smart Multi-Item & Multi-Wallet Parser + Kalkulator Perkalian (@ / x)
+ * 2. Auto-Create Dynamic Category Engine (Membuat Kategori Baru Otomatis + Ikon & Warna AI)
+ * 3. Kartu Preview Keranjang Chat Interaktif + Batch Undo 1-Klik
+ * 4. Memori Kamus Pintar Keluarga (Self-Learning Keyword Memory)
+ * 5. Perintah Chat Eksekusi Cepat (AI Action Commands: Tabung Impian, Bayar Tagihan, Buat/Ubah Budget Kategori)
  */
 function processChatbotMessage(memberId, rawMessage, confirmedCategory) {
   initDatabaseIfNeeded();
@@ -1226,7 +1231,22 @@ function processChatbotMessage(memberId, rawMessage, confirmedCategory) {
   const isAdmin = user.role === 'Admin';
   const ss = getSpreadsheet();
 
-  // 1. Cek apakah pesan berupa PERTANYAAN seputar saldo / budget
+  // Jika pengguna mengonfirmasi kategori untuk pesan yang sebelumnya ambigu, pelajari kata kuncinya (Fitur #4)
+  if (confirmedCategory && isAdmin) {
+    ensureOrCreateDynamicCategory(ss, { name: confirmedCategory });
+    autoLearnFromConfirmedText(text, confirmedCategory);
+  }
+
+  // 1. Cek Perintah Eksekusi Cepat AI (Fitur #5: Buat Kategori, Tabung Impian, Bayar Tagihan, Ubah Budget)
+  if (!confirmedCategory) {
+    const actionCmdResult = tryExecuteChatActionCommand(ss, user, text);
+    if (actionCmdResult) {
+      logChatAndInsight(ss, user.id, text, actionCmdResult.reply, 'Harian', 0, 'Dieksekusi');
+      return actionCmdResult;
+    }
+  }
+
+  // 2. Cek apakah pesan berupa PERTANYAAN seputar saldo / budget
   if (isQuestionIntent(text)) {
     const answer = answerFinancialQuestion(ss, user, text);
     logChatAndInsight(ss, user.id, text, answer, 'Harian', 0, 'Terjawab');
@@ -1237,7 +1257,7 @@ function processChatbotMessage(memberId, rawMessage, confirmedCategory) {
     };
   }
 
-  // 2. Cek apakah Member Anak mengajukan request dana tambahan (US-6 AC2)
+  // 3. Cek apakah Member Anak mengajukan request dana tambahan (US-6 AC2)
   if (!isAdmin && /(minta|ajukan|request|butuh|tambah)\s+(uang|dana|jajan|saldo)/i.test(text)) {
     const parsedReq = parseNaturalLanguageTransactions(text, user);
     const reqNominal = parsedReq.items.length > 0 ? parsedReq.items[0].amount : extractFirstAmount(text);
@@ -1248,37 +1268,60 @@ function processChatbotMessage(memberId, rawMessage, confirmedCategory) {
       });
       return {
         status: 'FUND_REQUEST_CREATED',
+        requestId: reqRes.requestId,
         reply: `📩 Pengajuan dana tambahan sebesar *Rp ${formatRupiahPlain(reqNominal)}* untuk _"${text}"_ berhasil dikirim ke Admin (Ayah & Bunda) untuk disetujui!`,
         request: reqRes
       };
     }
   }
 
-  // 3. Parsing transaksi menggunakan Gemini AI (jika GEMINI_API_KEY diatur) atau Smart Rule-Based NLP Indonesia
-  const parsed = parseNaturalLanguageTransactions(text, user, confirmedCategory);
+  // 4. Parsing Multi-Item & Multi-Wallet menggunakan Gemini AI / Smart NLP v2.2 (Fitur #1, #2, #4)
+  const parsed = parseNaturalLanguageTransactions(text, user, confirmedCategory, ss);
 
   if (!parsed.items || parsed.items.length === 0) {
     return {
       status: 'UNRECOGNIZED',
-      reply: '🤔 Maaf, Qyona AI belum menemukan nominal rupiah di pesanmu.\n\nContoh ketik:\n• _"Beli beras 5kg 75rb pakai tunai"_\n• _"Isi bensin Pertamax 150rb pakai GoPay"_\n• _"Sisa uang dapur bulan ini berapa?"_'
+      reply: '🤔 Maaf, Qyona AI belum menemukan nominal rupiah atau perintah aksi di pesanmu.\n\n💡 *Contoh Chat Pintar v2.2:*\n• _"Beli beras 5kg 75rb, ayam 2 ekor @35rb pakai tunai, terus makanan kucing 85rb via BCA"_\n• _"Buat kategori Skincare & Perawatan budget 600rb"_\n• _"Tabung 250rb ke Liburan Yogyakarta pakai BCA"_\n• _"Bayar lunas tagihan WiFi"_'
     };
   }
 
-  // US-1 AC2: Jika kategori tidak terdeteksi otomatis dan pengguna adalah Admin, tanyakan balik untuk konfirmasi
+  // US-1 AC2: Jika ada item yang sama sekali tidak bisa ditebak kategorinya dan bukan auto-dynamic category
   const ambiguousItem = parsed.items.find(it => it.needsCategoryConfirmation);
-  if (ambiguousItem && isAdmin && !confirmedCategory) {
+  if (ambiguousItem && isAdmin && !confirmedCategory && parsed.items.length === 1) {
+    const existingCats = getAllCategoryNames(ss);
     return {
       status: 'NEEDS_CONFIRMATION',
       pendingMessage: text,
       detectedAmount: ambiguousItem.amount,
       detectedDescription: ambiguousItem.description,
       detectedWalletId: ambiguousItem.walletId,
-      suggestedCategories: ['Dapur & Makanan', 'Tagihan & Utilitas', 'Transportasi & BBM', 'Jajan/Anak', 'Hiburan & Keluarga', 'Kesehatan & Darurat', 'Pendidikan & Les'],
-      reply: `🤔 Saya mendeteksi transaksi *${ambiguousItem.description}* sebesar *Rp ${formatRupiahPlain(ambiguousItem.amount)}*, namun kategorinya belum spesifik.\n\nSilakan pilih kategori di bawah ini sebelum saya menyimpannya:`
+      suggestedCategories: existingCats,
+      reply: `🤔 Saya mendeteksi transaksi *${ambiguousItem.description}* sebesar *Rp ${formatRupiahPlain(ambiguousItem.amount)}*, namun kategorinya belum spesifik.\n\nSilakan pilih kategori di bawah ini atau klik *➕ Buat Kategori Baru*:`
     };
   }
 
-  // Simpan seluruh item yang terdeteksi
+  // Fitur #2: Pastikan semua kategori (termasuk kategori baru hasil deteksi AI) otomatis dibuat di Sheet Kategori & Budget
+  const newCategoriesCreated = [];
+  if (isAdmin) {
+    parsed.items.forEach(item => {
+      const targetCat = confirmedCategory || item.category;
+      const catCreated = ensureOrCreateDynamicCategory(ss, {
+        name: targetCat,
+        suggestedIcon: item.suggestedIcon,
+        suggestedColor: item.suggestedColor,
+        suggestedLimit: item.suggestedLimit,
+        type: item.type
+      });
+      if (catCreated && catCreated.isNew) {
+        item.isNewCategory = true;
+        if (!newCategoriesCreated.some(c => c.name === catCreated.name)) {
+          newCategoriesCreated.push(catCreated);
+        }
+      }
+    });
+  }
+
+  // Simpan seluruh item yang terdeteksi (Fitur #1 & #3)
   const savedItems = [];
   const alerts = [];
   parsed.items.forEach(item => {
@@ -1296,20 +1339,33 @@ function processChatbotMessage(memberId, rawMessage, confirmedCategory) {
       amount: item.amount,
       category: res.category,
       type: item.type,
-      walletName: item.walletName
+      walletId: item.walletId,
+      walletName: item.walletName,
+      qtyNote: item.qtyNote || '',
+      isNewCategory: Boolean(item.isNewCategory),
+      learnedMatch: Boolean(item.learnedMatch)
     });
-    if (res.budgetAlert) alerts.push(res.budgetAlert);
+    if (res.budgetAlert && !alerts.includes(res.budgetAlert)) {
+      alerts.push(res.budgetAlert);
+    }
   });
 
-  // US-1 AC3: Balas ringkasan transaksi yang tersimpan dalam 1 pesan konfirmasi
+  // Fitur #3: Format Kartu Ringkasan Keranjang Belanja Multi-Item
   const totalSaved = savedItems.reduce((s, i) => s + i.amount, 0);
-  const lines = savedItems.map((it, idx) =>
-    `${idx + 1}. *${it.description}* — Rp ${formatRupiahPlain(it.amount)} _(${it.category} • ${it.walletName})_`
-  );
-  let replyMsg = `✅ *Tercatat Otomatis (${savedItems.length} Transaksi)*\n` +
-    lines.join('\n') +
-    `\n\n💰 *Total:* Rp ${formatRupiahPlain(totalSaved)}\n👤 *Dicatat oleh:* ${user.name}`;
+  const lines = savedItems.map((it, idx) => {
+    const newCatTag = it.isNewCategory ? ' ✨_[Kategori Baru]_' : (it.learnedMatch ? ' 🧠_[Memori AI]_' : '');
+    const qtyTag = it.qtyNote ? ` _(${it.qtyNote})_` : '';
+    return `${idx + 1}. *${it.description}*${qtyTag} — *Rp ${formatRupiahPlain(it.amount)}*\n   🏷️ _${it.category}_${newCatTag} • 💳 _${it.walletName}_`;
+  });
 
+  let replyMsg = `✅ *Keranjang AI Qyona Tercatat (${savedItems.length} Item)*\n\n` +
+    lines.join('\n') +
+    `\n\n💰 *Total Tercatat:* Rp ${formatRupiahPlain(totalSaved)}\n👤 *Oleh:* ${user.name}`;
+
+  if (newCategoriesCreated.length > 0) {
+    const newCatNames = newCategoriesCreated.map(c => `*${c.name}* (Budget Rp ${formatRupiahPlain(c.monthlyLimit)}/bln)`).join(', ');
+    replyMsg += `\n\n✨ *Auto-Kategori AI Aktif:* Kategori baru ${newCatNames} otomatis dibuat di Dashboard & Google Sheets!`;
+  }
   if (!isAdmin) {
     replyMsg += `\n🔒 _Info RBAC: Otomatis masuk kategori Jajan/Anak._`;
   }
@@ -1322,8 +1378,414 @@ function processChatbotMessage(memberId, rawMessage, confirmedCategory) {
   return {
     status: 'SAVED',
     reply: replyMsg,
-    transactionsCreated: savedItems
+    transactionId: savedItems[0] ? savedItems[0].id : '',
+    transactionIds: savedItems.map(i => i.id),
+    transactionsCreated: savedItems,
+    newCategoriesCreated: newCategoriesCreated
   };
+}
+
+/**
+ * ============================================================================
+ * FITUR #2 & #4: ENGINE KATEGORI DINAMIS & MEMORI KAMUS PINTAR KELUARGA
+ * ============================================================================
+ */
+const DYNAMIC_CATEGORY_CATALOG = [
+  {
+    name: 'Hewan Peliharaan',
+    regex: /\b(kucing|anjing|kelinci|burung|whiskas|royal\s*canin|meo|bolt|pasir\s*kucing|pet\s*shop|petshop|dokter\s*hewan|vaksin\s*kucing|grooming|pakan\s*kucing|makanan\s*kucing|makanan\s*anjing)\b/i,
+    icon: 'fa-paw',
+    color: '#F59E0B',
+    defaultLimit: 500000,
+    type: 'Keluar'
+  },
+  {
+    name: 'Perawatan & Kecantikan',
+    regex: /\b(skincare|skin\s*care|serum|toner|moisturizer|sunscreen|bedak|lipstik|makeup|make\s*up|salon|creambath|facial|spa|potong\s*rambut|cukur|barbershop|parfum|body\s*lotion|sabun\s*muka|kosmetik|wardah|somethinc|skintific)\b/i,
+    icon: 'fa-spa',
+    color: '#EC4899',
+    defaultLimit: 600000,
+    type: 'Keluar'
+  },
+  {
+    name: 'Amal & Sosial',
+    regex: /\b(sedekah|infaq|infak|zakat|wakaf|donasi|sumbangan|amal|santunan|kotak\s*amal|jumat\s*berkah|yatim|masjid|qurban|fidyah)\b/i,
+    icon: 'fa-hand-holding-heart',
+    color: '#10B981',
+    defaultLimit: 500000,
+    type: 'Keluar'
+  },
+  {
+    name: 'Hobi & Tanaman',
+    regex: /\b(pupuk|tanaman|bunga|bibit|pot\s*bunga|media\s*tanam|aquarium|ikan\s*hias|pancing|umpan|raket|badminton|futsal|gym|fitness|olahraga|lari|sepeda|camping|koleksi|lego|gitar)\b/i,
+    icon: 'fa-seedling',
+    color: '#06B6D4',
+    defaultLimit: 500000,
+    type: 'Keluar'
+  },
+  {
+    name: 'Perawatan Rumah & ART',
+    regex: /\b(tukang|cat\s*tembok|semen|pasir|keran|pipa|lampu|bohlam|kabel|obeng|perkakas|renovasi|servis\s*ac|cuci\s*ac|sedot\s*wc|laundry|setrika|art|mbak|asisten\s*rumah|kebersihan|sapu|pel)\b/i,
+    icon: 'fa-house-chimney-crack',
+    color: '#8B5CF6',
+    defaultLimit: 750000,
+    type: 'Keluar'
+  },
+  {
+    name: 'Pakaian & Belanja',
+    regex: /\b(baju|celana|kemeja|kaos|gamis|hijab|kerudung|jilbab|sepatu|sandal|tas|dompet|jaket|sweater|rok|batik|daster|pakaian|uniqlo|shopee|tokopedia|lazada|tiktok\s*shop)\b/i,
+    icon: 'fa-shirt',
+    color: '#D946EF',
+    defaultLimit: 800000,
+    type: 'Keluar'
+  },
+  {
+    name: 'Hadiah & Kondangan',
+    regex: /\b(kado|hadiah|kondangan|amplop\s*nikah|amplop|souvenir|ulang\s*tahun|ultah|parcel|hampers|buket|bunga\s*papan|tengok|jenguk)\b/i,
+    icon: 'fa-gift',
+    color: '#F43F5E',
+    defaultLimit: 500000,
+    type: 'Keluar'
+  },
+  {
+    name: 'Bayi & Kebutuhan Anak',
+    regex: /\b(popok|diapers|pampers|sweety|merries|makuku|susu\s*formula|sufor|sgm|bebelac|lactogen|mpasi|bubur\s*bayi|minyak\s*telon|tisu\s*basah|botol\s*susu|perlengkapan\s*bayi)\b/i,
+    icon: 'fa-baby-carriage',
+    color: '#FB7185',
+    defaultLimit: 900000,
+    type: 'Keluar'
+  }
+];
+
+function getAllCategoryNames(ss) {
+  ss = ss || getSpreadsheet();
+  const sh = ss.getSheetByName(SHEET_NAMES.KATEGORI);
+  if (!sh) return ['Dapur & Makanan', 'Tagihan & Utilitas', 'Transportasi & BBM', 'Jajan/Anak', 'Hiburan & Keluarga', 'Kesehatan & Darurat', 'Pendidikan & Les'];
+  const data = sh.getDataRange().getValues();
+  const names = [];
+  for (let i = 1; i < data.length; i++) {
+    const n = String(data[i][0] || '').trim();
+    if (n && String(data[i][5] || 'Keluar') === 'Keluar') {
+      names.push(n);
+    }
+  }
+  return names;
+}
+
+function pickSmartCategoryVisuals(catName) {
+  const lower = String(catName || '').toLowerCase();
+  for (let i = 0; i < DYNAMIC_CATEGORY_CATALOG.length; i++) {
+    const d = DYNAMIC_CATEGORY_CATALOG[i];
+    if (d.name.toLowerCase() === lower || d.regex.test(lower)) {
+      return { icon: d.icon, color: d.color, limit: d.defaultLimit };
+    }
+  }
+  const palette = [
+    { icon: 'fa-tags', color: '#0EA5E9' },
+    { icon: 'fa-bag-shopping', color: '#8B5CF6' },
+    { icon: 'fa-star', color: '#F59E0B' },
+    { icon: 'fa-heart', color: '#EC4899' },
+    { icon: 'fa-cube', color: '#14B8A6' }
+  ];
+  const hash = lower.split('').reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
+  const picked = palette[hash % palette.length];
+  return { icon: picked.icon, color: picked.color, limit: 500000 };
+}
+
+/**
+ * Pastikan kategori ada di Sheet `Kategori & Budget`; jika belum ada, buat otomatis!
+ */
+function ensureOrCreateDynamicCategory(ss, catSpec) {
+  ss = ss || getSpreadsheet();
+  const rawName = String(catSpec.name || '').trim();
+  if (!rawName) return null;
+
+  const sh = ss.getSheetByName(SHEET_NAMES.KATEGORI);
+  if (!sh) return null;
+
+  const data = sh.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][0] || '').trim().toLowerCase() === rawName.toLowerCase()) {
+      return {
+        isNew: false,
+        name: String(data[i][0]).trim(),
+        monthlyLimit: Number(data[i][1] || 0),
+        icon: String(data[i][4] || 'fa-tags'),
+        color: String(data[i][3] || '#10B981')
+      };
+    }
+  }
+
+  // Buat Kategori Baru secara otomatis di Sheet Kategori & Budget
+  const cleanTitle = rawName.replace(/\b\w/g, c => c.toUpperCase());
+  const visuals = pickSmartCategoryVisuals(cleanTitle);
+  const monthlyLimit = Number(catSpec.suggestedLimit || catSpec.monthlyLimit || visuals.limit || 500000);
+  const warnPercent = Number(catSpec.warnPercent || 80);
+  const color = String(catSpec.suggestedColor || catSpec.color || visuals.color);
+  const icon = String(catSpec.suggestedIcon || catSpec.icon || visuals.icon);
+  const type = String(catSpec.type || 'Keluar');
+
+  sh.appendRow([cleanTitle, monthlyLimit, warnPercent, color, icon, type]);
+  invalidateServerCache();
+
+  return {
+    isNew: true,
+    name: cleanTitle,
+    monthlyLimit: monthlyLimit,
+    warnPercent: warnPercent,
+    color: color,
+    icon: icon,
+    type: type
+  };
+}
+
+/**
+ * Endpoint RPC: Buat Kategori Baru dari UI Modal / Chat (Fitur #2)
+ */
+function createCustomCategory(memberId, payload) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    const user = verifyMemberById(memberId);
+    if (!user || user.role !== 'Admin') {
+      throw new Error('RBAC: Hanya Admin (Ayah/Bunda) yang dapat membuat kategori anggaran baru.');
+    }
+    const catName = String(payload.name || '').trim();
+    if (!catName) throw new Error('Nama kategori tidak boleh kosong.');
+
+    const ss = getSpreadsheet();
+    const res = ensureOrCreateDynamicCategory(ss, {
+      name: catName,
+      monthlyLimit: Number(payload.monthlyLimit || 500000),
+      warnPercent: Number(payload.warnPercent || 80),
+      color: payload.color,
+      icon: payload.icon,
+      type: payload.type || 'Keluar'
+    });
+
+    if (payload.sampleKeyword) {
+      learnCategoryKeywordRule(memberId, payload.sampleKeyword, res.name);
+    }
+
+    return {
+      success: true,
+      category: res,
+      isNew: res.isNew,
+      message: res.isNew
+        ? `✨ Kategori baru "${res.name}" (Budget Rp ${formatRupiahPlain(res.monthlyLimit)}/bln) berhasil ditambahkan!`
+        : `Kategori "${res.name}" sudah tersedia di sistem.`
+    };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * Endpoint RPC: Hapus / Batalkan Banyak Transaksi Sekaligus dari Keranjang Chat (Fitur #3)
+ */
+function deleteBatchTransactions(memberId, transactionIds) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try {
+    const user = verifyMemberById(memberId);
+    if (!user) throw new Error('Akses tidak sah.');
+    const ids = Array.isArray(transactionIds) ? transactionIds.map(String) : [String(transactionIds)];
+    if (ids.length === 0) throw new Error('Tidak ada ID transaksi untuk dibatalkan.');
+
+    const ss = getSpreadsheet();
+    const shTrx = ss.getSheetByName(SHEET_NAMES.TRANSAKSI);
+    const data = shTrx.getDataRange().getValues();
+    const isAdmin = user.role === 'Admin';
+    let deletedCount = 0;
+
+    // Hapus dari baris terbawah ke atas agar indeks baris tidak bergeser
+    for (let i = data.length - 1; i >= 1; i--) {
+      const rowId = String(data[i][0]);
+      if (ids.includes(rowId)) {
+        const ownerId = String(data[i][7]);
+        if (isAdmin || ownerId === user.id) {
+          shTrx.deleteRow(i + 1);
+          deletedCount++;
+        }
+      }
+    }
+
+    if (deletedCount > 0) {
+      recalculateAllWalletBalances(ss);
+    }
+    return {
+      success: true,
+      deletedCount: deletedCount,
+      message: `${deletedCount} transaksi berhasil dibatalkan dan saldo dompet telah dikembalikan.`
+    };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * Fitur #4: Self-Learning Keyword Memory (Menyimpan kamus kata kunci keluarga di PropertiesService)
+ */
+function getLearnedCategoryMap() {
+  try {
+    const raw = getConfig('QYONA_AI_LEARNED_RULES', '{}');
+    return JSON.parse(raw) || {};
+  } catch (e) {
+    return {};
+  }
+}
+
+function learnCategoryKeywordRule(memberId, keyword, categoryName) {
+  const user = verifyMemberById(memberId);
+  if (!user) throw new Error('Pengguna tidak dikenali.');
+  const cleanKw = String(keyword || '').toLowerCase().trim();
+  const cleanCat = String(categoryName || '').trim();
+  if (!cleanKw || cleanKw.length < 2 || !cleanCat) {
+    return { success: false, message: 'Kata kunci terlalu pendek.' };
+  }
+  const map = getLearnedCategoryMap();
+  map[cleanKw] = cleanCat;
+  PropertiesService.getScriptProperties().setProperty('QYONA_AI_LEARNED_RULES', JSON.stringify(map));
+  ensureOrCreateDynamicCategory(getSpreadsheet(), { name: cleanCat });
+  invalidateServerCache();
+  return {
+    success: true,
+    keyword: cleanKw,
+    category: cleanCat,
+    message: `🧠 Memori AI Qyona diperbarui! Kata "${cleanKw}" sekarang otomatis masuk kategori "${cleanCat}".`
+  };
+}
+
+function autoLearnFromConfirmedText(text, categoryName) {
+  try {
+    const cleaned = cleanItemDescription(text).toLowerCase()
+      .replace(/\b(beli|bayar|isi|uang|buat|untuk|di|ke|sama|dan|pakai|via|tunai|cash|bca|gopay|mandiri)\b/gi, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const words = cleaned.split(' ').filter(w => w.length >= 3 && !/^\d+$/.test(w));
+    if (words.length > 0) {
+      const keyPhrase = words.slice(0, 2).join(' ');
+      const map = getLearnedCategoryMap();
+      map[keyPhrase] = categoryName;
+      if (words[0].length >= 4) map[words[0]] = categoryName;
+      PropertiesService.getScriptProperties().setProperty('QYONA_AI_LEARNED_RULES', JSON.stringify(map));
+    }
+  } catch (e) {}
+}
+
+/**
+ * ============================================================================
+ * FITUR #5: PERINTAH CHAT EKSEKUSI CEPAT (AI ACTION COMMANDS)
+ * ============================================================================
+ */
+function tryExecuteChatActionCommand(ss, user, text) {
+  const lower = text.toLowerCase().trim();
+  const isAdmin = user.role === 'Admin';
+
+  // A. Perintah Buat Kategori Baru: "buat kategori Skincare budget 600rb" / "tambah kategori Hewan Peliharaan 500rb"
+  const createCatMatch = text.match(/^(?:tolong\s+)?(?:buat(?:kan)?|tambah(?:kan)?|bikin)\s+kategori\s+(?:baru\s+)?([a-zA-Z0-9\s&\/-]+?)(?:\s+(?:budget|anggaran|limit|kuota|sebesar|rp)\s*.*|\s+\d+.*|$)/i);
+  if (createCatMatch && isAdmin) {
+    let catName = createCatMatch[1].replace(/\b(budget|anggaran|limit|kuota|sebesar)\b.*$/i, '').trim();
+    const limitAmt = extractFirstAmount(text) || 500000;
+    if (catName) {
+      const created = ensureOrCreateDynamicCategory(ss, {
+        name: catName,
+        monthlyLimit: limitAmt
+      });
+      return {
+        status: 'ACTION_EXECUTED',
+        actionType: 'CATEGORY_CREATED',
+        category: created,
+        reply: `✨ *Kategori Baru Berhasil Dibuat!*\n\n• *Nama Kategori:* ${created.name}\n• *Kuota Budget:* Rp ${formatRupiahPlain(created.monthlyLimit)} / bulan\n• *Status:* Aktif di Dashboard & Grafik Donut`,
+        transactionsCreated: []
+      };
+    }
+  }
+
+  // B. Perintah Ubah Budget Kategori: "ubah budget Dapur jadi 4jt" / "naikkan anggaran Hiburan ke 1,2 juta"
+  const updateBgtMatch = text.match(/^(?:ubah|ganti|atur|set|naikkan|turunkan|update)\s+(?:budget|anggaran|limit|kuota)\s+([a-zA-Z0-9\s&\/-]+?)\s+(?:jadi|ke|menjadi|sebesar)\s+/i);
+  if (updateBgtMatch && isAdmin) {
+    const targetQuery = updateBgtMatch[1].trim().toLowerCase();
+    const newLimit = extractFirstAmount(text);
+    if (newLimit > 0) {
+      const existingCats = getAllCategoryNames(ss);
+      const foundCat = existingCats.find(c => c.toLowerCase().includes(targetQuery)) || updateBgtMatch[1].trim();
+      const ensured = ensureOrCreateDynamicCategory(ss, { name: foundCat, monthlyLimit: newLimit });
+      updateCategoryBudget(user.id, ensured.name, newLimit, 80);
+      return {
+        status: 'ACTION_EXECUTED',
+        actionType: 'BUDGET_UPDATED',
+        reply: `🎯 *Batas Anggaran Diperbarui via Chat!*\n\n• *Kategori:* ${ensured.name}\n• *Budget Baru:* Rp ${formatRupiahPlain(newLimit)} / bulan`,
+        transactionsCreated: []
+      };
+    }
+  }
+
+  // C. Perintah Setor ke Kantong Impian: "tabung 250rb ke Liburan Yogyakarta pakai BCA" / "setor celengan 50rb ke Sepeda"
+  if (/^(?:tabung(?:kan)?|setor(?:kan)?|sisihkan|nabung)\b/i.test(lower) && /(?:ke|untuk|buat|celengan|kantong|impian|target)\b/i.test(lower)) {
+    const amount = extractFirstAmount(text);
+    if (amount > 0) {
+      const shGoals = ss.getSheetByName(SHEET_NAMES.GOALS);
+      if (shGoals) {
+        const gData = shGoals.getDataRange().getValues();
+        let matchedGoalId = '';
+        let matchedGoalName = '';
+        for (let i = 1; i < gData.length; i++) {
+          const gId = String(gData[i][0]);
+          const gName = String(gData[i][1] || '');
+          const gWords = gName.toLowerCase().split(/\s+/).filter(w => w.length >= 3);
+          if (gWords.some(w => lower.includes(w))) {
+            matchedGoalId = gId;
+            matchedGoalName = gName;
+            break;
+          }
+        }
+        if (!matchedGoalId && gData.length > 1) {
+          matchedGoalId = String(gData[1][0]);
+          matchedGoalName = String(gData[1][1]);
+        }
+        if (matchedGoalId) {
+          const wallet = detectWalletFromText(text, isAdmin);
+          const contribRes = contributeToGoal(user.id, {
+            goalId: matchedGoalId,
+            amount: amount,
+            walletId: wallet.id
+          });
+          return {
+            status: 'ACTION_EXECUTED',
+            actionType: 'GOAL_CONTRIBUTED',
+            reply: `🐷 *Setoran Kantong Impian via Chat Berhasil!*\n\n${contribRes.message}\n💳 *Sumber Dana:* ${wallet.name}`,
+            transactionsCreated: []
+          };
+        }
+      }
+    }
+  }
+
+  // D. Perintah Bayar Lunas Tagihan Rutin: "bayar lunas tagihan wifi" / "lunasi tagihan listrik"
+  if (isAdmin && /(?:bayar\s+lunas|lunasi|tandai\s+lunas|lunasin)\b/i.test(lower)) {
+    const shBill = ss.getSheetByName(SHEET_NAMES.TAGIHAN);
+    if (shBill) {
+      const bData = shBill.getDataRange().getValues();
+      for (let i = 1; i < bData.length; i++) {
+        const bId = String(bData[i][0]);
+        const bName = String(bData[i][1] || '');
+        const bWords = bName.toLowerCase().split(/\s+/).filter(w => w.length >= 3);
+        if (bWords.some(w => lower.includes(w))) {
+          const paidRes = markBillAsPaid(user.id, bId);
+          return {
+            status: 'ACTION_EXECUTED',
+            actionType: 'BILL_PAID',
+            transactionId: paidRes.transactionId,
+            reply: `⚡ *Pelunasan Tagihan via Chat Berhasil!*\n\n${paidRes.message}`,
+            transactionsCreated: []
+          };
+        }
+      }
+    }
+  }
+
+  return null;
 }
 
 /**
@@ -1332,9 +1794,8 @@ function processChatbotMessage(memberId, rawMessage, confirmedCategory) {
 function isQuestionIntent(text) {
   const lower = text.toLowerCase();
   const hasQuestionWord = /(berapa|sisa|total|cek|gimana|bagaimana|info|status|rekap|laporan|apakah|\?)/i.test(lower);
-  const hasFinanceKeyword = /(saldo|uang|budget|anggaran|dapur|makan|jajan|tagihan|pengeluaran|pemasukan|dompet|hemat|boros)/i.test(lower);
-  // Pastikan bukan kalimat perintah input seperti "beli makan 25rb"
-  const isPurchase = /^(beli|bayar|isi|jajan|catat|masuk|transfer|belanja)\b/i.test(lower) && extractFirstAmount(lower) > 0;
+  const hasFinanceKeyword = /(saldo|uang|budget|anggaran|dapur|makan|jajan|tagihan|pengeluaran|pemasukan|dompet|hemat|boros|kategori|impian|tabungan)/i.test(lower);
+  const isPurchase = /^(beli|bayar|isi|jajan|catat|masuk|transfer|belanja|tadi|barusan)\b/i.test(lower) && extractFirstAmount(lower) > 0;
   return hasQuestionWord && hasFinanceKeyword && !isPurchase;
 }
 
@@ -1348,24 +1809,29 @@ function answerFinancialQuestion(ss, user, questionText) {
   if (user.role !== 'Admin') {
     const childCat = data.categoryBreakdown.find(c => c.name === 'Jajan/Anak') || { spent: 0, limit: user.allowanceQuota || 500000 };
     const remaining = Math.max(0, childCat.limit - childCat.spent);
-    return `👦Halo *${user.name}*!\n\n` +
+    return `👦 Halo *${user.name}*!\n\n` +
       `• *Sisa Kuota Jajanmu:* Rp ${formatRupiahPlain(remaining)}\n` +
       `• *Terpakai Bulan Ini:* Rp ${formatRupiahPlain(childCat.spent)} dari Rp ${formatRupiahPlain(childCat.limit)} (${childCat.percentage || 0}%)\n\n` +
       `Tetap semangat menabung ya! 🌟`;
   }
 
-  // Cek apakah menanyakan kategori tertentu (mis. "uang makan" / "dapur")
-  let matchedCat = null;
-  if (/dapur|makan|sembako|masak|beras/i.test(lower)) {
-    matchedCat = data.categoryBreakdown.find(c => c.name === 'Dapur & Makanan');
-  } else if (/tagihan|listrik|air|wifi|internet/i.test(lower)) {
-    matchedCat = data.categoryBreakdown.find(c => c.name === 'Tagihan & Utilitas');
-  } else if (/jajan|anak|raka|nayla/i.test(lower)) {
-    matchedCat = data.categoryBreakdown.find(c => c.name === 'Jajan/Anak');
-  } else if (/bensin|transport|bbm|tol|mobil/i.test(lower)) {
-    matchedCat = data.categoryBreakdown.find(c => c.name === 'Transportasi & BBM');
-  } else if (/hiburan|nonton|kopi|jalan/i.test(lower)) {
-    matchedCat = data.categoryBreakdown.find(c => c.name === 'Hiburan & Keluarga');
+  // Cek apakah menanyakan salah satu kategori (termasuk kategori baru dinamis!)
+  let matchedCat = data.categoryBreakdown.find(c => {
+    const words = c.name.toLowerCase().split(/[\s&\/]+/).filter(w => w.length >= 3);
+    return words.some(w => lower.includes(w));
+  });
+  if (!matchedCat) {
+    if (/dapur|makan|sembako|masak|beras/i.test(lower)) {
+      matchedCat = data.categoryBreakdown.find(c => c.name === 'Dapur & Makanan');
+    } else if (/tagihan|listrik|air|wifi|internet/i.test(lower)) {
+      matchedCat = data.categoryBreakdown.find(c => c.name === 'Tagihan & Utilitas');
+    } else if (/jajan|anak|raka|nayla/i.test(lower)) {
+      matchedCat = data.categoryBreakdown.find(c => c.name === 'Jajan/Anak');
+    } else if (/bensin|transport|bbm|tol|mobil/i.test(lower)) {
+      matchedCat = data.categoryBreakdown.find(c => c.name === 'Transportasi & BBM');
+    } else if (/hiburan|nonton|kopi|jalan/i.test(lower)) {
+      matchedCat = data.categoryBreakdown.find(c => c.name === 'Hiburan & Keluarga');
+    }
   }
 
   if (matchedCat) {
@@ -1388,82 +1854,138 @@ function answerFinancialQuestion(ss, user, questionText) {
 }
 
 /**
- * Parsing teks bebas bahasa Indonesia menjadi item transaksi terstruktur
- * Menggunakan Gemini API jika key tersedia, dan fallback cerdas berbasis kamus Bahasa Indonesia
+ * ============================================================================
+ * FITUR #1 & #2: SMART MULTI-ITEM, MULTI-WALLET & DYNAMIC CATEGORY PARSER
+ * ============================================================================
  */
-function parseNaturalLanguageTransactions(text, user, forcedCategory) {
+function parseNaturalLanguageTransactions(text, user, forcedCategory, ss) {
   const isAdmin = user.role === 'Admin';
   const geminiKey = getConfig('GEMINI_API_KEY', '');
+  const existingCategories = ss ? getAllCategoryNames(ss) : [];
+  const learnedMap = getLearnedCategoryMap();
 
-  // Deteksi Dompet dari teks
-  const walletDetection = detectWalletFromText(text, isAdmin);
+  // Default dompet dari keseluruhan teks
+  const fallbackWallet = detectWalletFromText(text, isAdmin);
 
-  // Jika Gemini API Key dikonfigurasi, panggil Gemini untuk ekstraksi presisi
-  if (geminiKey) {
+  // Jika Gemini API Key dikonfigurasi, panggil Gemini untuk ekstraksi presisi (mendukung pembuatan kategori baru!)
+  if (geminiKey && !forcedCategory) {
     try {
-      const aiResult = callGeminiForTextParsing(geminiKey, text, isAdmin, walletDetection);
+      const aiResult = callGeminiForTextParsing(geminiKey, text, isAdmin, fallbackWallet, existingCategories);
       if (aiResult && aiResult.items && aiResult.items.length > 0) {
         return aiResult;
       }
     } catch (e) {
-      // Lanjut gunakan mesin NLP lokal jika kuota habis / offline
+      // Lanjut gunakan mesin Smart NLP lokal v2.2 jika kuota habis / offline
     }
   }
 
-  // Mesin NLP Bahasa Indonesia Lokal (mendukung multi-item dipisah koma / "dan" / baris baru)
-  const segments = text
-    .split(/(?:\r?\n|\s+dan\s+|\s*,\s*(?=[a-zA-Z]+\s+.*?\d)|\s*;\s*)/i)
+  // Pecah pesan panjang menjadi segmen belanjaan multi-item:
+  // Memisahkan berdasarkan baris baru, titik koma, kata hubung ("dan", "terus", "lalu", "kemudian", "sama", "plus", "+"), atau koma yang diikuti item baru
+  const rawSegments = text
+    .split(/(?:\r?\n|\s*;\s*|\s+(?:dan|terus|lalu|kemudian|lanjut|sama|plus|\+)\s+|\s*,\s*(?=[a-zA-Z0-9\s]{2,}?\d))/i)
     .map(s => s.trim())
     .filter(Boolean);
 
-  const items = [];
-  const targetSegments = segments.length > 0 ? segments : [text];
+  const targetSegments = rawSegments.length > 0 ? rawSegments : [text];
+  const parsedDrafts = [];
 
   targetSegments.forEach(seg => {
-    const amount = extractFirstAmount(seg);
-    if (amount > 0) {
+    const amountInfo = extractAmountWithMultiplier(seg);
+    if (amountInfo.amount > 0) {
+      const explicitWallet = detectExplicitWalletInSegment(seg, isAdmin);
       const catInfo = !isAdmin
         ? { category: 'Jajan/Anak', type: 'Keluar', confident: true }
         : (forcedCategory
             ? { category: forcedCategory, type: forcedCategory === 'Gaji & Pemasukan' ? 'Masuk' : 'Keluar', confident: true }
-            : classifyIndonesianCategory(seg));
+            : classifyIndonesianCategory(seg, existingCategories, learnedMap));
 
       const cleanDesc = cleanItemDescription(seg);
-      items.push({
+      parsedDrafts.push({
         description: cleanDesc || seg,
-        amount: amount,
+        amount: amountInfo.amount,
+        qtyNote: amountInfo.qtyNote,
         category: catInfo.category,
         type: catInfo.type,
-        walletId: walletDetection.id,
-        walletName: walletDetection.name,
+        suggestedIcon: catInfo.suggestedIcon,
+        suggestedColor: catInfo.suggestedColor,
+        suggestedLimit: catInfo.suggestedLimit,
+        learnedMatch: Boolean(catInfo.learnedMatch),
+        explicitWallet: explicitWallet,
+        walletId: explicitWallet ? explicitWallet.id : fallbackWallet.id,
+        walletName: explicitWallet ? explicitWallet.name : fallbackWallet.name,
         needsCategoryConfirmation: !catInfo.confident && isAdmin && !forcedCategory
       });
     }
   });
 
-  // Jika segmen terpecah gagal mengambil nominal tapi kalimat utuh punya nominal
-  if (items.length === 0) {
-    const singleAmount = extractFirstAmount(text);
-    if (singleAmount > 0) {
+  // Propagasi dompet grup: contoh "beli beras 75rb, ayam 35rb pakai tunai, terus bensin 150rb pakai gopay"
+  // Maka "beras" otomatis ikut "pakai tunai" dari segmen di belakangnya!
+  if (isAdmin && parsedDrafts.length > 1) {
+    let nextKnownWallet = null;
+    for (let i = parsedDrafts.length - 1; i >= 0; i--) {
+      if (parsedDrafts[i].explicitWallet) {
+        nextKnownWallet = parsedDrafts[i].explicitWallet;
+      } else if (nextKnownWallet) {
+        parsedDrafts[i].walletId = nextKnownWallet.id;
+        parsedDrafts[i].walletName = nextKnownWallet.name;
+      }
+    }
+  }
+
+  // Fallback jika kalimat tunggal tidak terpecah
+  if (parsedDrafts.length === 0) {
+    const singleInfo = extractAmountWithMultiplier(text);
+    if (singleInfo.amount > 0) {
       const catInfo = !isAdmin
         ? { category: 'Jajan/Anak', type: 'Keluar', confident: true }
         : (forcedCategory
             ? { category: forcedCategory, type: forcedCategory === 'Gaji & Pemasukan' ? 'Masuk' : 'Keluar', confident: true }
-            : classifyIndonesianCategory(text));
+            : classifyIndonesianCategory(text, existingCategories, learnedMap));
 
-      items.push({
+      parsedDrafts.push({
         description: cleanItemDescription(text) || text,
-        amount: singleAmount,
+        amount: singleInfo.amount,
+        qtyNote: singleInfo.qtyNote,
         category: catInfo.category,
         type: catInfo.type,
-        walletId: walletDetection.id,
-        walletName: walletDetection.name,
+        suggestedIcon: catInfo.suggestedIcon,
+        suggestedColor: catInfo.suggestedColor,
+        suggestedLimit: catInfo.suggestedLimit,
+        learnedMatch: Boolean(catInfo.learnedMatch),
+        walletId: fallbackWallet.id,
+        walletName: fallbackWallet.name,
         needsCategoryConfirmation: !catInfo.confident && isAdmin && !forcedCategory
       });
     }
   }
 
-  return { items: items };
+  return { items: parsedDrafts };
+}
+
+/**
+ * Fitur #1: Mendukung Kalkulasi Perkalian Otomatis ("2 ekor @35rb", "3x 15.000", "4 bungkus @ 12k")
+ */
+function extractAmountWithMultiplier(str) {
+  if (!str) return { amount: 0, qtyNote: '' };
+
+  // Cek pola perkalian: "<qty> [satuan] @ <harga>" atau "<qty> x <harga>"
+  const multRegex = /\b(\d{1,3})\s*(?:ekor|kg|liter|ltr|pcs|buah|bungkus|pak|box|botol|kaleng|porsi|cup|gelas|potong|ikat|lembar|bulan|hari)?\s*(?:@|x|kali)\s*(?:rp\.?\s*)?(\d+(?:[.,]\d+)?\s*(?:juta|jt|ribu|rb|k)?)/i;
+  const multMatch = str.match(multRegex);
+  if (multMatch) {
+    const qty = parseInt(multMatch[1], 10);
+    const unitPrice = extractFirstAmount(multMatch[2]);
+    if (qty > 0 && qty <= 500 && unitPrice >= 500) {
+      return {
+        amount: qty * unitPrice,
+        qtyNote: `${qty} × Rp ${formatRupiahPlain(unitPrice)}`
+      };
+    }
+  }
+
+  return {
+    amount: extractFirstAmount(str),
+    qtyNote: ''
+  };
 }
 
 /**
@@ -1473,8 +1995,8 @@ function parseNaturalLanguageTransactions(text, user, forcedCategory) {
  */
 function extractFirstAmount(str) {
   if (!str) return 0;
-  // Hapus angka yang menempel dengan satuan berat/volume/frekuensi agar tidak salah baca ("5kg", "2liter", "3x", "12kg")
-  const cleaned = str.replace(/\b\d+(?:[.,]\d+)?\s*(?:kg|gr|gram|liter|ltr|ml|ons|kw|kwh|pcs|buah|ikat|bungkus|pak|box|x|kali|orang)\b/gi, ' ');
+  // Hapus angka yang menempel dengan satuan berat/volume/frekuensi agar tidak salah baca ("5kg", "2liter", "100kWh")
+  const cleaned = str.replace(/\b\d+(?:[.,]\d+)?\s*(?:kg|gr|gram|liter|ltr|ml|ons|kw|kwh|pcs|buah|ikat|bungkus|pak|box|ekor|botol|porsi|orang)\b/gi, ' ');
 
   // 1. Cek pola dengan akhiran juta / jt / rb / ribu / k
   const unitRegex = /(?:rp\.?\s*)?(\d+(?:[.,]\d+)?)\s*(juta|jt|ribu|rb|k)\b/i;
@@ -1505,54 +2027,131 @@ function extractFirstAmount(str) {
 
 function cleanItemDescription(seg) {
   let s = seg
-    .replace(/(?:pakai|via|dengan|dari|lewat)\s+(?:tunai|cash|bca|mandiri|gopay|qris|ovo|dana|bank|dompet\s+\w+)/gi, '')
+    .replace(/^(?:tadi\s+pagi|tadi\s+siang|tadi\s+malam|tadi|barusan|kemarin|sekalian|lanjut|terus|lalu)\s+/gi, '')
+    .replace(/(?:masuk\s+)?kategori\s*[:=]?\s*[a-zA-Z0-9\s&\/-]+$/gi, '')
+    .replace(/(?:pakai|via|dengan|dari|lewat)\s+(?:uang\s+)?(?:tunai|cash|bca|mandiri|gopay|qris|ovo|dana|shopeepay|bank|dompet\s+\w+)/gi, '')
+    .replace(/\b\d{1,3}\s*(?:@|x|kali)\s*(?:rp\.?\s*)?\d+(?:[.,]\d+)?\s*(?:juta|jt|ribu|rb|k)?\b/gi, '')
     .replace(/(?:rp\.?\s*)?\d+(?:[.,]\d+)?\s*(?:juta|jt|ribu|rb|k)\b/gi, '')
     .replace(/(?:rp\.?\s*)?\d{1,3}(?:\.\d{3})+\b/gi, '')
     .replace(/(?:rp\.?\s*)?\b\d{4,9}\b/gi, '')
+    .replace(/^[\s,\-+•]+|[\s,\-+•]+$/g, '')
     .replace(/\s+/g, ' ')
     .trim();
   if (!s) return 'Transaksi Harian';
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-function detectWalletFromText(text, isAdmin) {
-  if (!isAdmin) {
-    return { id: 'WLT-05', name: 'Saku Anak (Gopay/Cash)' };
-  }
-  const lower = text.toLowerCase();
-  if (/tunai|cash|dapur/i.test(lower)) return { id: 'WLT-04', name: 'Dompet Tunai Dapur' };
-  if (/gopay|qris|ewallet|ovo|dana|shopeepay/i.test(lower)) return { id: 'WLT-03', name: 'GoPay / QRIS Rumah' };
-  if (/mandiri/i.test(lower)) return { id: 'WLT-02', name: 'Mandiri Tabungan' };
-  return { id: 'WLT-01', name: 'BCA Keluarga' };
+function detectExplicitWalletInSegment(seg, isAdmin) {
+  if (!isAdmin) return { id: 'WLT-05', name: 'Saku Anak (Gopay/Cash)' };
+  const lower = String(seg || '').toLowerCase();
+  if (/\b(tunai|cash|uang\s*dapur)\b/i.test(lower)) return { id: 'WLT-04', name: 'Dompet Tunai Dapur' };
+  if (/\b(gopay|qris|ewallet|ovo|dana|shopeepay)\b/i.test(lower)) return { id: 'WLT-03', name: 'GoPay / QRIS Rumah' };
+  if (/\b(mandiri)\b/i.test(lower)) return { id: 'WLT-02', name: 'Mandiri Tabungan' };
+  if (/\b(bca|transfer\s*bca)\b/i.test(lower)) return { id: 'WLT-01', name: 'BCA Keluarga' };
+  return null;
 }
 
-function classifyIndonesianCategory(text) {
-  const lower = text.toLowerCase();
-  if (/gaji|bonus|thr|insentif|pemasukan|komisi|dividen|terima uang/i.test(lower)) {
+function detectWalletFromText(text, isAdmin) {
+  const explicit = detectExplicitWalletInSegment(text, isAdmin);
+  return explicit || (isAdmin ? { id: 'WLT-01', name: 'BCA Keluarga' } : { id: 'WLT-05', name: 'Saku Anak (Gopay/Cash)' });
+}
+
+/**
+ * Klasifikasi Kategori Bahasa Indonesia Super-Cerdas (Fitur #2 & #4):
+ * 1. Cek instruksi kategori eksplisit di chat ("... kategori: Hewan Peliharaan")
+ * 2. Cek Memori Kamus Pintar Keluarga (`learnedMap`)
+ * 3. Cek Kategori yang sudah ada di Sheet (`existingCategories`)
+ * 4. Cek 8 Kategori Utama Bawaan
+ * 5. Cek Katalog Auto-Create Dynamic Category (`DYNAMIC_CATEGORY_CATALOG`)
+ * 6. Inferensi otomatis dari objek kata benda ("beli <objek>" -> buat kategori pintar jika eksplisit)
+ */
+function classifyIndonesianCategory(text, existingCategories, learnedMap) {
+  const lower = String(text || '').toLowerCase();
+  existingCategories = Array.isArray(existingCategories) ? existingCategories : [];
+  learnedMap = learnedMap || {};
+
+  // 1. Cek apakah user menuliskan nama kategori secara eksplisit di dalam chat: misal "beli pakan 80rb kategori Hewan Peliharaan"
+  const explicitCatMatch = text.match(/(?:masuk\s+)?kategori\s*[:=]?\s*([a-zA-Z0-9\s&\/-]+?)(?:\s+(?:pakai|via|dengan)\s+.*|$)/i);
+  if (explicitCatMatch) {
+    const rawCat = cleanItemDescription(explicitCatMatch[1]);
+    if (rawCat && rawCat.length >= 3) {
+      const vis = pickSmartCategoryVisuals(rawCat);
+      return {
+        category: rawCat,
+        type: 'Keluar',
+        confident: true,
+        suggestedIcon: vis.icon,
+        suggestedColor: vis.color,
+        suggestedLimit: vis.limit
+      };
+    }
+  }
+
+  // 2. Cek Memori Kamus Pintar Keluarga (Fitur #4 Self-Learning)
+  const learnedKeys = Object.keys(learnedMap);
+  for (let i = 0; i < learnedKeys.length; i++) {
+    const kw = learnedKeys[i];
+    if (kw && lower.includes(kw.toLowerCase())) {
+      return {
+        category: learnedMap[kw],
+        type: learnedMap[kw] === 'Gaji & Pemasukan' ? 'Masuk' : 'Keluar',
+        confident: true,
+        learnedMatch: true
+      };
+    }
+  }
+
+  // 3. Cek kecocokan nama langsung dengan kategori yang sudah ada di Sheet Kategori & Budget
+  for (let i = 0; i < existingCategories.length; i++) {
+    const catName = existingCategories[i];
+    const keywords = catName.toLowerCase().split(/[\s&\/]+/).filter(w => w.length >= 4 && w !== 'dan');
+    if (keywords.some(w => lower.includes(w))) {
+      return { category: catName, type: 'Keluar', confident: true };
+    }
+  }
+
+  // 4. Cek 8 Kategori Standar Rumah Tangga
+  if (/gaji|bonus|thr|insentif|pemasukan|komisi|dividen|terima uang|pendapatan|cair/i.test(lower)) {
     return { category: 'Gaji & Pemasukan', type: 'Masuk', confident: true };
   }
-  if (/beras|minyak|telur|sayur|ayam|ikan|daging|bumbu|pasar|superindo|alfamart|indomaret|gas|galon|aqua|sembako|masak|makan|sarapan|lauk|roti|susu|buah|gofood|grabfood|warteg|restoran/i.test(lower)) {
+  if (/beras|minyak|telur|sayur|bayam|kangkung|wortel|cabe|bawang|ayam|ikan|daging|sapi|udang|tahu|tempe|bumbu|garam|gula|kecap|saus|pasar|superindo|alfamart|indomaret|gas|elpiji|galon|aqua|sembako|masak|makan|sarapan|lauk|nasi|roti|susu|buah|apel|jeruk|pisang|gofood|grabfood|warteg|restoran|kuliner|bakso|mie|soto|sate/i.test(lower)) {
     return { category: 'Dapur & Makanan', type: 'Keluar', confident: true };
   }
-  if (/listrik|pln|token|air|pdam|wifi|internet|biznet|indihome|pulsa|paket data|iuran|rt|sampah|cicilan|kpr/i.test(lower)) {
+  if (/listrik|pln|token|air|pdam|wifi|internet|biznet|indihome|pulsa|paket data|kuota|iuran|ipl|rt|rw|sampah|keamanan|cicilan|kpr|pajak|pbb|bphtb/i.test(lower)) {
     return { category: 'Tagihan & Utilitas', type: 'Keluar', confident: true };
   }
-  if (/bensin|pertamax|pertalite|solar|bbm|tol|parkir|grab|gojek|ojol|krl|kereta|bus|servis mobil|servis motor|oli|ban/i.test(lower)) {
+  if (/bensin|pertamax|pertalite|solar|dexlite|shell|bbm|tol|e-toll|flazz|parkir|grab|gojek|ojol|taksi|krl|mrt|lrt|kereta|bus|transjakarta|servis mobil|servis motor|ganti oli|ban|cuci mobil|cuci motor|bengkel/i.test(lower)) {
     return { category: 'Transportasi & BBM', type: 'Keluar', confident: true };
   }
-  if (/jajan|es krim|coklat|snack|mainan|uang saku|kantin|raka|nayla/i.test(lower)) {
+  if (/jajan|es krim|coklat|permen|snack|chiki|mainan|uang saku|kantin|raka|nayla|boba|cilok/i.test(lower)) {
     return { category: 'Jajan/Anak', type: 'Keluar', confident: true };
   }
-  if (/obat|dokter|apotek|vitamin|rs|rumah sakit|klinik|bpjs|cek lab|gigi/i.test(lower)) {
+  if (/obat|dokter|apotek|kimia farma|k24|vitamin|suplemen|madu|rs|rumah sakit|klinik|puskesmas|bpjs|cek lab|gigi|kacamata|terapi/i.test(lower)) {
     return { category: 'Kesehatan & Darurat', type: 'Keluar', confident: true };
   }
-  if (/spp|sekolah|les|kursus|buku|alat tulis|seragam|ujian|pendidikan/i.test(lower)) {
+  if (/spp|sekolah|les|kursus|bimbel|kumon|buku|alat tulis|pulpen|pensil|tas sekolah|seragam|ujian|praktikum|pendidikan|kuliah/i.test(lower)) {
     return { category: 'Pendidikan & Les', type: 'Keluar', confident: true };
   }
-  if (/nonton|bioskop|netflix|spotify|kopi|cafe|liburan|hotel|wisata|rekrasi|mall|hiburan/i.test(lower)) {
+  if (/nonton|bioskop|xxi|netflix|spotify|youtube|disney|kopi|starbucks|kenangan|fore|cafe|nongkrong|liburan|hotel|staycation|tiket|wisata|rekreasi|mall|hiburan|karaoke/i.test(lower)) {
     return { category: 'Hiburan & Keluarga', type: 'Keluar', confident: true };
   }
-  // Jika tidak cocok dengan kata kunci di atas, minta konfirmasi (US-1 AC2)
+
+  // 5. Cek Katalog Kategori Dinamis Pintar (Fitur #2 Auto-Create Dynamic Category)
+  for (let j = 0; j < DYNAMIC_CATEGORY_CATALOG.length; j++) {
+    const dyn = DYNAMIC_CATEGORY_CATALOG[j];
+    if (dyn.regex.test(lower)) {
+      return {
+        category: dyn.name,
+        type: dyn.type,
+        confident: true,
+        suggestedIcon: dyn.icon,
+        suggestedColor: dyn.color,
+        suggestedLimit: dyn.defaultLimit
+      };
+    }
+  }
+
+  // Jika tidak cocok dengan kamus mana pun, minta konfirmasi atau buat kategori baru dari UI
   return { category: 'Dapur & Makanan', type: 'Keluar', confident: false };
 }
 
@@ -1723,12 +2322,19 @@ Kembalikan HANYA JSON array murni dengan format: [{"description": "Nama Item", "
   })) : [];
 }
 
-function callGeminiForTextParsing(apiKey, text, isAdmin, walletDetection) {
+function callGeminiForTextParsing(apiKey, text, isAdmin, walletDetection, existingCategories) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(apiKey)}`;
-  const prompt = `Urai pesan transaksi keuangan rumah tangga berikut menjadi JSON: "${text}"
-Kategori yang diizinkan: "Dapur & Makanan", "Tagihan & Utilitas", "Jajan/Anak", "Transportasi & BBM", "Kesehatan & Darurat", "Hiburan & Keluarga", "Pendidikan & Les", "Gaji & Pemasukan".
-Kembalikan HANYA JSON dengan format:
-{"items": [{"description": "Beli beras 5kg", "amount": 75000, "category": "Dapur & Makanan", "type": "Keluar", "needsCategoryConfirmation": false}]}`;
+  const catListStr = (existingCategories && existingCategories.length > 0)
+    ? existingCategories.join('", "')
+    : 'Dapur & Makanan", "Tagihan & Utilitas", "Jajan/Anak", "Transportasi & BBM", "Kesehatan & Darurat", "Hiburan & Keluarga", "Pendidikan & Les", "Gaji & Pemasukan';
+
+  const prompt = `Kamu adalah Asisten AI Keuangan Keluarga Qyona v2.2. Urai pesan belanja/transaksi berikut menjadi JSON: "${text}"
+Aturan:
+1. Pisahkan setiap item belanjaan secara mandiri. Jika ada perkalian (misal "2 ekor @35rb" atau "3x 15rb"), kalikan total harganya ke dalam field "amount" dan isi "qtyNote" (misal "2 x Rp 35.000").
+2. Kategori yang sudah ada: "${catListStr}". Jika suatu item TIDAK cocok dengan kategori yang ada (misal makanan kucing, skincare, sedekah, pupuk tanaman, pakaian, hadiah, dll), BUAT nama kategori baru yang ringkas & tepat (contoh: "Hewan Peliharaan", "Perawatan & Kecantikan", "Amal & Sosial", "Hobi & Tanaman", "Pakaian & Belanja").
+3. Deteksi dompet per item jika disebutkan ("tunai"->WLT-04, "gopay"/"qris"->WLT-03, "mandiri"->WLT-02, "bca"->WLT-01).
+Kembalikan HANYA JSON murni:
+{"items": [{"description": "Beli beras 5kg", "amount": 75000, "qtyNote": "", "category": "Dapur & Makanan", "type": "Keluar", "walletHint": "", "needsCategoryConfirmation": false}]}`;
 
   const resp = UrlFetchApp.fetch(url, {
     method: 'post',
@@ -1744,15 +2350,19 @@ Kembalikan HANYA JSON dengan format:
   const rawText = json.candidates && json.candidates[0].content.parts[0].text;
   const parsed = JSON.parse(rawText.replace(/```json|```/g, '').trim());
   if (parsed && Array.isArray(parsed.items)) {
-    parsed.items = parsed.items.map(it => ({
-      description: it.description,
-      amount: Number(it.amount || 0),
-      category: isAdmin ? it.category : 'Jajan/Anak',
-      type: isAdmin ? (it.type || 'Keluar') : 'Keluar',
-      walletId: walletDetection.id,
-      walletName: walletDetection.name,
-      needsCategoryConfirmation: Boolean(it.needsCategoryConfirmation)
-    }));
+    parsed.items = parsed.items.map(it => {
+      const itemWallet = it.walletHint ? detectExplicitWalletInSegment(it.walletHint, isAdmin) : null;
+      return {
+        description: it.description,
+        amount: Number(it.amount || 0),
+        qtyNote: String(it.qtyNote || ''),
+        category: isAdmin ? String(it.category || 'Dapur & Makanan') : 'Jajan/Anak',
+        type: isAdmin ? (it.type || 'Keluar') : 'Keluar',
+        walletId: itemWallet ? itemWallet.id : walletDetection.id,
+        walletName: itemWallet ? itemWallet.name : walletDetection.name,
+        needsCategoryConfirmation: Boolean(it.needsCategoryConfirmation)
+      };
+    });
   }
   return parsed;
 }

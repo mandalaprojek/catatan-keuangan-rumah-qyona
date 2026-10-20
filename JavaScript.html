@@ -28,7 +28,7 @@
 
   const isGasEnv = typeof google !== 'undefined' && google.script && google.script.run;
   const GAS_WEB_APP_URL = localStorage.getItem('qyona_gas_webapp_url') ||
-    'https://script.google.com/macros/s/AKfycbyiFGDEzwO9JHr-_H3PBnhB9Zuix-0va-4eDlTBnP6wYaSFDFWEr-1HkZwGYqELb5vm/exec';
+    'https://script.google.com/macros/s/AKfycbzUY_7JLwjm6rqambSmVdWvWXXYhU6UlMvTEdmS0QBV1OwgBO4Cc0U2yo_XxLJGJr-f/exec';
 
   /**
    * Wrapper asinkron untuk memanggil fungsi backend Google Apps Script (`Code.gs`):
@@ -943,21 +943,74 @@
     try {
       const res = await callGasBackend('processChatbotMessage', APP_STATE.currentUser.id, messageText, forcedCategory);
 
-      // Buat tombol Inline Interaktif 2-Arah seperti Telegram Inline Keyboard (Upgrade v2.0 Fitur #2)
+      // Buat tombol Inline Interaktif 2-Arah (Upgrade AI v2.2)
       const inlineButtons = [];
-      if (res.status === 'SAVED' && res.transactionId) {
-        if (APP_STATE.currentUser?.role === 'Admin') {
+      const isAdmin = APP_STATE.currentUser?.role === 'Admin';
+
+      if (res.status === 'SAVED') {
+        const ids = res.transactionIds || (res.transactionId ? [res.transactionId] : []);
+        if (ids.length > 1) {
+          // Fitur #3: Keranjang multi-item
           inlineButtons.push({
-            label: '🔄 Ubah Kategori',
+            label: `↩️ Batalkan Semua (${ids.length} Item)`,
+            variant: 'danger',
+            onClick: `handleInlineCancelBatch(${JSON.stringify(ids).replace(/"/g, '&quot;')})`
+          });
+          inlineButtons.push({
+            label: '📋 Cek di Dashboard',
             variant: 'secondary',
-            onClick: `openEditTransactionModal('${res.transactionId}')`
+            onClick: `switchMainTab('dashboard')`
+          });
+          if (res.newCategoriesCreated && res.newCategoriesCreated.length > 0 && isAdmin) {
+            inlineButtons.push({
+              label: '🏷️ Atur Budget Kategori',
+              variant: 'primary',
+              onClick: `switchMainTab('manage')`
+            });
+          }
+        } else if (res.transactionId) {
+          if (isAdmin) {
+            inlineButtons.push({
+              label: '🔄 Ubah Kategori',
+              variant: 'secondary',
+              onClick: `openEditTransactionModal('${res.transactionId}')`
+            });
+            const firstItem = (res.transactionsCreated && res.transactionsCreated[0]) || {};
+            const itemDesc = (firstItem.description || '').replace(/'/g, "\\'");
+            const itemCat = (firstItem.category || '').replace(/'/g, "\\'");
+            inlineButtons.push({
+              label: '🧠 Ajari AI',
+              variant: 'primary',
+              onClick: `promptLearnKeyword('${itemDesc}', '${itemCat}')`
+            });
+          }
+          inlineButtons.push({
+            label: '❌ Batalkan Transaksi',
+            variant: 'danger',
+            onClick: `handleInlineCancelTrx('${res.transactionId}')`
           });
         }
-        inlineButtons.push({
-          label: '❌ Batalkan Transaksi',
-          variant: 'danger',
-          onClick: `handleInlineCancelTrx('${res.transactionId}')`
-        });
+      } else if (res.status === 'ACTION_EXECUTED') {
+        // Fitur #5: Perintah Aksi Cepat AI
+        if (res.actionType === 'CATEGORY_CREATED' && isAdmin) {
+          inlineButtons.push({
+            label: '🏷️ Buka Pengaturan Budget',
+            variant: 'primary',
+            onClick: `switchMainTab('manage')`
+          });
+        } else if (res.actionType === 'GOAL_CONTRIBUTED') {
+          inlineButtons.push({
+            label: '🐷 Lihat Kantong Impian',
+            variant: 'primary',
+            onClick: `switchMainTab('goals')`
+          });
+        } else if (res.actionType === 'BILL_PAID') {
+          inlineButtons.push({
+            label: '📅 Cek Status Tagihan',
+            variant: 'secondary',
+            onClick: `switchMainTab('bills')`
+          });
+        }
       } else if (res.status === 'FUND_REQUEST_CREATED' && res.requestId) {
         inlineButtons.push({
           label: '📋 Lihat Status Approval',
@@ -973,16 +1026,22 @@
         APP_STATE.pendingConfirmationMsg = res.pendingMessage;
         const box = document.getElementById('chatCategoryConfirmBox');
         const chips = document.getElementById('chatCategoryChips');
-        chips.innerHTML = (res.suggestedCategories || []).map(cat => `
+        const listHtml = (res.suggestedCategories || []).map(cat => `
           <button type="button" onclick="confirmPendingCategory('${cat}')"
             class="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-800 border border-amber-400 text-[11px] font-bold text-amber-900 dark:text-amber-200 hover:bg-amber-500 hover:text-white transition">
             ${cat}
           </button>
         `).join('');
+        chips.innerHTML = listHtml + `
+          <button type="button" onclick="openAddCategoryModal('', APP_STATE.pendingConfirmationMsg)"
+            class="px-2.5 py-1 rounded-lg bg-purple-600 text-white text-[11px] font-bold hover:bg-purple-700 transition">
+            ➕ Buat Kategori Baru
+          </button>
+        `;
         box.classList.remove('hidden');
       } else {
         APP_STATE.pendingConfirmationMsg = null;
-        if (res.status === 'SAVED' || res.status === 'FUND_REQUEST_CREATED') {
+        if (res.status === 'SAVED' || res.status === 'FUND_REQUEST_CREATED' || res.status === 'ACTION_EXECUTED') {
           await refreshDashboardData(false);
         }
       }
@@ -997,6 +1056,115 @@
       appendChatMessage('bot', `🗑️ *Transaksi ${trxId} Dibatalkan!* Saldo dompet telah dikembalikan secara otomatis.`);
       showToast(res.message, 'info');
       await refreshDashboardData(true);
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  }
+
+  async function handleInlineCancelBatch(trxIds) {
+    try {
+      const res = await callGasBackend('deleteBatchTransactions', APP_STATE.currentUser.id, trxIds);
+      appendChatMessage('bot', `🗑️ *${res.deletedCount} Transaksi Berhasil Dibatalkan!* Saldo dompet telah dikembalikan.`);
+      showToast(res.message, 'info');
+      await refreshDashboardData(true);
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  }
+
+  function promptLearnKeyword(description, currentCategory) {
+    const keyword = prompt(`🧠 Ajari AI Qyona:\nMasukkan kata kunci untuk otomatis masuk kategori "${currentCategory}":`, description);
+    if (!keyword) return;
+    callGasBackend('learnCategoryKeywordRule', APP_STATE.currentUser.id, keyword, currentCategory)
+      .then(res => {
+        showToast(res.message, 'success');
+        appendChatMessage('bot', `🧠 *Kamus AI Diperbarui:*\nSetiap kali kamu mengetik *"${res.keyword}"*, AI Qyona akan otomatis mengarahkannya ke kategori *"${res.category}"*.`);
+      })
+      .catch(err => showToast(err.message, 'error'));
+  }
+
+  function openAddCategoryModal(initialName = '', sampleKeyword = '') {
+    if (APP_STATE.currentUser?.role !== 'Admin') {
+      showToast('Hanya Admin (Ayah/Bunda) yang dapat membuat kategori anggaran baru.', 'warning');
+      return;
+    }
+    document.getElementById('modalGenericTitle').textContent = 'Buat Kategori Anggaran Baru';
+    document.getElementById('modalGenericBody').innerHTML = `
+      <form onsubmit="submitAddCategory(event)" class="space-y-3.5">
+        <input type="hidden" id="newCatSampleKw" value="${sampleKeyword || ''}">
+        <div>
+          <label class="block text-xs font-bold mb-1">Nama Kategori Baru</label>
+          <input id="newCatName" required value="${initialName || ''}" placeholder="Contoh: Hewan Peliharaan, Skincare, Sedekah"
+            class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold">
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="block text-xs font-bold mb-1">Target Anggaran Bulanan (Rp)</label>
+            <input id="newCatLimit" type="number" required value="500000" step="50000"
+              class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold">
+          </div>
+          <div>
+            <label class="block text-xs font-bold mb-1">Peringatan Budget (%)</label>
+            <input id="newCatWarn" type="number" required value="80" min="50" max="95"
+              class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold">
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="block text-xs font-bold mb-1">Ikon FontAwesome</label>
+            <select id="newCatIcon" class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold">
+              <option value="fa-paw">🐾 Hewan (fa-paw)</option>
+              <option value="fa-spa">💆 Kecantikan / Skincare (fa-spa)</option>
+              <option value="fa-hand-holding-heart">🤲 Amal & Sosial (fa-hand-holding-heart)</option>
+              <option value="fa-seedling">🌱 Hobi / Tanaman (fa-seedling)</option>
+              <option value="fa-house-chimney-crack">🏠 Rumah & Renovasi (fa-house-chimney-crack)</option>
+              <option value="fa-shirt">👕 Pakaian & Belanja (fa-shirt)</option>
+              <option value="fa-gift">🎁 Hadiah & Kado (fa-gift)</option>
+              <option value="fa-dumbbell">🏋️ Olahraga / Gym (fa-dumbbell)</option>
+              <option value="fa-tags">🏷️ Lainnya (fa-tags)</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-bold mb-1">Warna Badge</label>
+            <input id="newCatColor" type="color" value="#8B5CF6"
+              class="w-full h-9 p-1 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 cursor-pointer">
+          </div>
+        </div>
+        <div class="flex justify-end gap-2 pt-2">
+          <button type="button" onclick="closeModal('modalGenericAdmin')" class="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-bold">Batal</button>
+          <button type="submit" class="px-4 py-2 rounded-xl qyona-gradient text-white text-xs font-bold">Simpan Kategori</button>
+        </div>
+      </form>
+    `;
+    document.getElementById('modalGenericAdmin').classList.remove('hidden');
+  }
+
+  async function submitAddCategory(e) {
+    e.preventDefault();
+    const name = document.getElementById('newCatName').value;
+    const monthlyLimit = Number(document.getElementById('newCatLimit').value);
+    const warnPercent = Number(document.getElementById('newCatWarn').value);
+    const icon = document.getElementById('newCatIcon').value;
+    const color = document.getElementById('newCatColor').value;
+    const sampleKeyword = document.getElementById('newCatSampleKw').value;
+
+    try {
+      const res = await callGasBackend('createCustomCategory', APP_STATE.currentUser.id, {
+        name,
+        monthlyLimit,
+        warnPercent,
+        icon,
+        color,
+        sampleKeyword
+      });
+      closeModal('modalGenericAdmin');
+      showToast(res.message, 'success');
+      appendChatMessage('bot', `✨ *Kategori Baru Aktif!*\nKategori *"${res.category.name}"* (Batas Rp ${formatRp(res.category.monthlyLimit)}/bln) sudah terpasang di Google Sheets & Dashboard.`);
+      if (sampleKeyword && APP_STATE.pendingConfirmationMsg) {
+        confirmPendingCategory(res.category.name);
+      } else {
+        await refreshDashboardData(true);
+      }
     } catch (err) {
       showToast(err.message, 'error');
     }
@@ -2605,43 +2773,218 @@
           };
         }
 
-        const amount = extractFirstAmountLocal(text);
-        if (!amount) {
+        // Cek Action Commands AI Lokal (Fitur #5)
+        if (isAdmin && /^(?:buat(?:kan)?|tambah(?:kan)?|bikin)\s+kategori\s+(?:baru\s+)?/i.test(text)) {
+          const match = text.match(/^(?:buat(?:kan)?|tambah(?:kan)?|bikin)\s+kategori\s+(?:baru\s+)?([a-zA-Z0-9\s&\/-]+?)(?:\s+(?:budget|anggaran|limit|sebesar|rp)\s*.*|\s+\d+.*|$)/i);
+          if (match) {
+            const catName = match[1].replace(/\b(budget|anggaran|limit|sebesar)\b.*$/i, '').trim();
+            const limitAmt = extractFirstAmountLocal(text) || 500000;
+            const res = this.createCustomCategory(memberId, { name: catName, monthlyLimit: limitAmt });
+            return {
+              status: 'ACTION_EXECUTED',
+              actionType: 'CATEGORY_CREATED',
+              category: res.category,
+              reply: `✨ *Kategori Baru Berhasil Dibuat via Chat!*\n• *Nama:* ${res.category.name}\n• *Budget:* ${formatRp(res.category.monthlyLimit)}/bln\n• *Status:* Aktif di Dashboard`,
+              transactionsCreated: []
+            };
+          }
+        }
+
+        if (isAdmin && /^(?:ubah|ganti|atur|set|naikkan|turunkan|update)\s+(?:budget|anggaran|limit)\s+/i.test(text)) {
+          const match = text.match(/^(?:ubah|ganti|atur|set|naikkan|turunkan|update)\s+(?:budget|anggaran|limit)\s+([a-zA-Z0-9\s&\/-]+?)\s+(?:jadi|ke|menjadi|sebesar)\s+/i);
+          if (match) {
+            const targetQ = match[1].trim().toLowerCase();
+            const newLim = extractFirstAmountLocal(text);
+            const foundCat = DB.categories.find(c => c.name.toLowerCase().includes(targetQ));
+            if (foundCat && newLim > 0) {
+              foundCat.monthlyLimit = newLim;
+              return {
+                status: 'ACTION_EXECUTED',
+                actionType: 'BUDGET_UPDATED',
+                reply: `🎯 *Batas Anggaran Diperbarui!*\n• *Kategori:* ${foundCat.name}\n• *Budget Baru:* ${formatRp(newLim)}/bulan`,
+                transactionsCreated: []
+              };
+            }
+          }
+        }
+
+        if (/^(?:tabung(?:kan)?|setor(?:kan)?|sisihkan|nabung)\b/i.test(text) && /(?:ke|untuk|buat|celengan|kantong|impian|target)\b/i.test(text)) {
+          const amt = extractFirstAmountLocal(text);
+          if (amt > 0 && DB.goals.length > 0) {
+            const g = DB.goals.find(x => text.toLowerCase().includes(x.name.toLowerCase().slice(0, 5))) || DB.goals[0];
+            const contribRes = this.contributeToGoal(memberId, { goalId: g.id, amount: amt });
+            return {
+              status: 'ACTION_EXECUTED',
+              actionType: 'GOAL_CONTRIBUTED',
+              reply: `🐷 *Setoran Kantong Impian Berhasil!*\n${contribRes.message}`,
+              transactionsCreated: []
+            };
+          }
+        }
+
+        if (isAdmin && /(?:bayar\s+lunas|lunasi|tandai\s+lunas)\b/i.test(text)) {
+          const b = DB.bills.find(x => text.toLowerCase().includes(x.name.toLowerCase().slice(0, 4))) || DB.bills[0];
+          if (b) {
+            const paidRes = this.markBillAsPaid(memberId, b.id);
+            return {
+              status: 'ACTION_EXECUTED',
+              actionType: 'BILL_PAID',
+              reply: `⚡ *Pelunasan Tagihan Berhasil!*\n${paidRes.message}`,
+              transactionsCreated: []
+            };
+          }
+        }
+
+        // Multi-Item & Multi-Wallet Parser Lokal (Fitur #1 & #2)
+        const segments = text
+          .split(/(?:\r?\n|\s*;\s*|\s+(?:dan|terus|lalu|kemudian|sama|plus|\+)\s+|\s*,\s*(?=[a-zA-Z0-9\s]{2,}?\d))/i)
+          .map(s => s.trim())
+          .filter(Boolean);
+
+        const targetSegments = segments.length > 0 ? segments : [text];
+        const draftItems = [];
+
+        targetSegments.forEach(seg => {
+          let amt = 0;
+          let qtyNote = '';
+          const multMatch = seg.match(/\b(\d{1,3})\s*(?:ekor|kg|liter|pcs|buah|bungkus|pak|box|botol|kaleng|porsi)?\s*(?:@|x|kali)\s*(?:rp\.?\s*)?(\d+(?:[.,]\d+)?\s*(?:juta|jt|ribu|rb|k)?)/i);
+          if (multMatch) {
+            const q = parseInt(multMatch[1], 10);
+            const u = extractFirstAmountLocal(multMatch[2]);
+            if (q > 0 && u > 0) {
+              amt = q * u;
+              qtyNote = `${q} × ${formatRp(u)}`;
+            }
+          }
+          if (!amt) amt = extractFirstAmountLocal(seg);
+
+          if (amt > 0) {
+            let catName = 'Dapur & Makanan';
+            let catType = 'Keluar';
+            let confident = false;
+
+            if (!isAdmin) {
+              catName = 'Jajan/Anak';
+              confident = true;
+            } else if (confirmedCategory) {
+              catName = confirmedCategory;
+              confident = true;
+            } else {
+              const matched = classifyLocal(seg);
+              catName = matched.category;
+              catType = matched.type;
+              confident = matched.confident;
+
+              // Deteksi Kategori Dinamis Tambahan jika di luar 8 kategori bawaan
+              if (!confident) {
+                if (/\b(kucing|anjing|whiskas|royal\s*canin|petshop|pakan)\b/i.test(seg)) {
+                  catName = 'Hewan Peliharaan'; confident = true;
+                } else if (/\b(skincare|serum|bedak|lipstik|salon|spa|kosmetik)\b/i.test(seg)) {
+                  catName = 'Perawatan & Kecantikan'; confident = true;
+                } else if (/\b(sedekah|infaq|zakat|donasi|amal|santunan)\b/i.test(seg)) {
+                  catName = 'Amal & Sosial'; confident = true;
+                } else if (/\b(pupuk|tanaman|bunga|bibit|aquarium|futsal|gym|sepeda)\b/i.test(seg)) {
+                  catName = 'Hobi & Tanaman'; confident = true;
+                } else if (/\b(baju|celana|sepatu|sandal|hijab|gamis|tas)\b/i.test(seg)) {
+                  catName = 'Pakaian & Belanja'; confident = true;
+                } else if (/\b(kado|hadiah|kondangan|amplop|parcel)\b/i.test(seg)) {
+                  catName = 'Hadiah & Kondangan'; confident = true;
+                }
+              }
+            }
+
+            const wId = /tunai|cash/i.test(seg) ? 'WLT-04' : (/gopay|qris/i.test(seg) ? 'WLT-03' : (/mandiri/i.test(seg) ? 'WLT-02' : (isAdmin ? 'WLT-01' : 'WLT-05')));
+            draftItems.push({
+              description: seg.replace(/(?:pakai|via)\s+\w+/gi, '').replace(/\b\d+.*$/, '').trim() || seg,
+              amount: amt,
+              qtyNote,
+              category: catName,
+              type: catType,
+              walletId: wId,
+              confident
+            });
+          }
+        });
+
+        if (draftItems.length === 0) {
           return {
             status: 'UNRECOGNIZED',
-            reply: '🤔 Maaf, Qyona AI belum menemukan nominal Rupiah di pesanmu.\nContoh: _"Beli beras 5kg 75rb pakai tunai"_ atau _"Sisa uang makan bulan ini berapa?"_'
+            reply: '🤔 Maaf, Qyona AI belum menemukan nominal Rupiah di pesanmu.\n\nContoh:\n• _"Beli beras 5kg 75rb, ayam 2 ekor @35rb pakai tunai, terus makanan kucing 85rb via BCA"_\n• _"Tabung 200rb ke Liburan Yogyakarta pakai BCA"_'
           };
         }
 
-        const catInfo = !isAdmin
-          ? { category: 'Jajan/Anak', type: 'Keluar', confident: true }
-          : (confirmedCategory
-              ? { category: confirmedCategory, type: 'Keluar', confident: true }
-              : classifyLocal(text));
-
-        if (!catInfo.confident && isAdmin && !confirmedCategory) {
+        if (draftItems.length === 1 && !draftItems[0].confident && isAdmin && !confirmedCategory) {
           return {
             status: 'NEEDS_CONFIRMATION',
             pendingMessage: text,
-            suggestedCategories: ['Dapur & Makanan', 'Tagihan & Utilitas', 'Transportasi & BBM', 'Jajan/Anak', 'Hiburan & Keluarga', 'Kesehatan & Darurat'],
-            reply: `🤔 Saya mendeteksi nominal *${formatRp(amount)}*, namun kategorinya belum spesifik. Silakan klik kategori yang sesuai:`
+            suggestedCategories: DB.categories.filter(c => c.type === 'Keluar').map(c => c.name),
+            reply: `🤔 Saya mendeteksi transaksi *${draftItems[0].description}* sebesar *${formatRp(draftItems[0].amount)}*, namun kategorinya belum spesifik. Silakan pilih atau buat kategori:`
           };
         }
 
-        const walletId = /tunai|cash/i.test(text) ? 'WLT-04' : (/gopay|qris/i.test(text) ? 'WLT-03' : (isAdmin ? 'WLT-01' : 'WLT-05'));
-        const saved = this.saveTransaction(memberId, {
-          type: catInfo.type,
-          amount,
-          category: catInfo.category,
-          description: text,
-          walletId,
-          source: 'Chat'
+        const newCatsCreated = [];
+        const savedItems = [];
+
+        draftItems.forEach(item => {
+          if (isAdmin) {
+            let existingCat = DB.categories.find(c => c.name.toLowerCase() === item.category.toLowerCase());
+            if (!existingCat) {
+              existingCat = {
+                name: item.category,
+                monthlyLimit: 500000,
+                warnPercent: 80,
+                color: '#8B5CF6',
+                icon: 'fa-tags',
+                type: item.type
+              };
+              DB.categories.push(existingCat);
+              newCatsCreated.push(existingCat);
+            }
+          }
+
+          const saved = this.saveTransaction(memberId, {
+            type: item.type,
+            amount: item.amount,
+            category: item.category,
+            description: item.description,
+            walletId: item.walletId,
+            source: 'Chat'
+          });
+
+          const wltObj = DB.wallets.find(w => w.id === item.walletId) || DB.wallets[0];
+          savedItems.push({
+            id: saved.transactionId,
+            description: item.description,
+            amount: item.amount,
+            qtyNote: item.qtyNote,
+            category: saved.category,
+            type: item.type,
+            walletId: item.walletId,
+            walletName: wltObj.name
+          });
         });
+
+        const totalSaved = savedItems.reduce((s, i) => s + i.amount, 0);
+        const lines = savedItems.map((it, idx) => {
+          const qNote = it.qtyNote ? ` _(${it.qtyNote})_` : '';
+          return `${idx + 1}. *${it.description}*${qNote} — *${formatRp(it.amount)}*\n   🏷️ _${it.category}_ • 💳 _${it.walletName}_`;
+        });
+
+        let replyMsg = `✅ *Keranjang AI Qyona Tercatat (${savedItems.length} Item)*\n\n` +
+          lines.join('\n') +
+          `\n\n💰 *Total:* ${formatRp(totalSaved)}\n👤 *Oleh:* ${user.name}`;
+
+        if (newCatsCreated.length > 0) {
+          replyMsg += `\n\n✨ *Auto-Kategori AI Aktif:* Kategori *${newCatsCreated.map(c => c.name).join(', ')}* otomatis dibuat di Dashboard!`;
+        }
 
         return {
           status: 'SAVED',
-          transactionId: saved.transactionId,
-          reply: `✅ *Tercatat Otomatis!*\n• *Item:* ${text}\n• *Nominal:* ${formatRp(amount)}\n• *Kategori:* ${saved.category}\n• *Oleh:* ${user.name}`
+          reply: replyMsg,
+          transactionId: savedItems[0]?.id || '',
+          transactionIds: savedItems.map(i => i.id),
+          transactionsCreated: savedItems,
+          newCategoriesCreated: newCatsCreated
         };
       },
 
@@ -2837,6 +3180,56 @@
         return {
           success: true,
           message: 'Notifikasi interaktif 2-arah dengan tombol Inline berhasil disimulasikan di panel Chatbot!'
+        };
+      },
+
+      createCustomCategory(adminId, payload) {
+        let existing = DB.categories.find(c => c.name.toLowerCase() === String(payload.name).toLowerCase());
+        if (existing) {
+          return { success: true, isNew: false, category: existing, message: `Kategori "${existing.name}" sudah ada.` };
+        }
+        const newCat = {
+          name: payload.name,
+          monthlyLimit: Number(payload.monthlyLimit || 500000),
+          warnPercent: Number(payload.warnPercent || 80),
+          color: payload.color || '#8B5CF6',
+          icon: payload.icon || 'fa-tags',
+          type: payload.type || 'Keluar'
+        };
+        DB.categories.push(newCat);
+        return {
+          success: true,
+          isNew: true,
+          category: newCat,
+          message: `✨ Kategori baru "${newCat.name}" (Budget ${formatRp(newCat.monthlyLimit)}/bln) berhasil ditambahkan!`
+        };
+      },
+
+      deleteBatchTransactions(memberId, transactionIds) {
+        const ids = Array.isArray(transactionIds) ? transactionIds : [transactionIds];
+        let delCount = 0;
+        ids.forEach(id => {
+          const idx = DB.transactions.findIndex(t => t.id === id);
+          if (idx !== -1) {
+            DB.transactions.splice(idx, 1);
+            delCount++;
+          }
+        });
+        return { success: true, deletedCount: delCount, message: `${delCount} transaksi berhasil dibatalkan.` };
+      },
+
+      learnCategoryKeywordRule(memberId, keyword, categoryName) {
+        let learned = {};
+        try {
+          learned = JSON.parse(localStorage.getItem('qyona_ai_learned_rules_v1') || '{}');
+        } catch (e) {}
+        learned[keyword.toLowerCase().trim()] = categoryName;
+        localStorage.setItem('qyona_ai_learned_rules_v1', JSON.stringify(learned));
+        return {
+          success: true,
+          keyword: keyword.toLowerCase().trim(),
+          category: categoryName,
+          message: `🧠 Memori AI Qyona diperbarui! Kata "${keyword}" sekarang otomatis masuk kategori "${categoryName}".`
         };
       },
 

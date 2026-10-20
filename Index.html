@@ -623,9 +623,14 @@
 
           <!-- Pengaturan Target Budget per Kategori -->
           <div class="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm">
-            <div class="mb-4">
-              <h3 class="font-extrabold text-base text-slate-900 dark:text-white">Atur Target Anggaran & Ambang Peringatan (%)</h3>
-              <p class="text-xs text-slate-500 dark:text-slate-400">Ubah batas bulanan per kategori untuk kalkulasi Auto-Tracking</p>
+            <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+              <div>
+                <h3 class="font-extrabold text-base text-slate-900 dark:text-white">Atur Target Anggaran & Ambang Peringatan (%)</h3>
+                <p class="text-xs text-slate-500 dark:text-slate-400">Ubah batas bulanan per kategori untuk kalkulasi Auto-Tracking</p>
+              </div>
+              <button onclick="openAddCategoryModal()" class="px-3.5 py-2 rounded-xl bg-purple-600 text-white text-xs font-bold hover:bg-purple-700 transition flex items-center gap-1.5 shadow-sm">
+                <i class="fa-solid fa-plus"></i> Buat Kategori Baru
+              </button>
             </div>
             <div id="budgetSettingsContainer" class="grid grid-cols-1 md:grid-cols-2 gap-3">
               <!-- Diisi dinamis oleh JS -->
@@ -735,17 +740,20 @@
 
           <!-- Quick Prompt Chips -->
           <div class="px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200/70 dark:border-slate-800 flex items-center gap-1.5 overflow-x-auto no-scrollbar">
-            <button onclick="sendQuickPrompt('Beli beras 5kg 75rb pakai tunai')" class="shrink-0 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-emerald-500 transition">
-              🌾 Beli beras 5kg 75rb
+            <button onclick="sendQuickPrompt('Beli beras 5kg 75rb, ayam 2 ekor @35rb pakai tunai, terus makanan kucing 85rb via BCA')" class="shrink-0 text-[11px] font-bold px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-700 text-emerald-800 dark:text-emerald-200 hover:bg-emerald-500 hover:text-white transition">
+              🛒 Borongan + Auto-Kategori
+            </button>
+            <button onclick="openAddCategoryModal()" class="shrink-0 text-[11px] font-bold px-2.5 py-1 rounded-full bg-purple-50 dark:bg-purple-950/40 border border-purple-300 dark:border-purple-700 text-purple-800 dark:text-purple-200 hover:bg-purple-500 hover:text-white transition">
+              ➕ Buat Kategori Baru
+            </button>
+            <button onclick="sendQuickPrompt('Tabung 200rb ke Liburan Yogyakarta pakai BCA')" class="shrink-0 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-emerald-500 transition">
+              🐷 Tabung via Chat
             </button>
             <button onclick="sendQuickPrompt('Sisa uang makan bulan ini berapa?')" class="shrink-0 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-emerald-500 transition">
               🍲 Sisa uang makan?
             </button>
-            <button onclick="sendQuickPrompt('Isi bensin Pertamax 150rb pakai GoPay')" class="shrink-0 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-emerald-500 transition">
-              ⛽ Isi bensin 150rb
-            </button>
-            <button onclick="sendQuickPrompt('Jajan roti bakar dan susu 25rb')" class="shrink-0 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-emerald-500 transition">
-              🥪 Jajan 25rb
+            <button onclick="sendQuickPrompt('Bayar lunas tagihan WiFi')" class="shrink-0 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-emerald-500 transition">
+              ⚡ Bayar Tagihan
             </button>
           </div>
 
