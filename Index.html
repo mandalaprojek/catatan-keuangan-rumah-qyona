@@ -1224,6 +1224,43 @@
     </div>
   </div>
 
+  <!-- ========================================================================
+       MODAL 6: POP-UP MODAL KONFIRMASI INTERAKTIF GLOBAL (TENGAH LAYAR)
+       Aksi Persetujuan Dokumen, Pembatalan Transaksi, Tagihan & Approval
+       ======================================================================== -->
+  <div id="modalGlobalConfirm" class="fixed inset-0 z-[95] hidden bg-slate-950/65 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-slate-900 rounded-3xl max-w-sm w-full p-6 text-center border border-slate-200 dark:border-slate-800 shadow-2xl animate-fade-in relative">
+      <!-- Ikon Peringatan / Checklist Dinamis dengan Denyut Lembut -->
+      <div id="modalConfirmIconBox" class="w-16 h-16 rounded-3xl mx-auto mb-4 flex items-center justify-center text-2xl shadow-inner transition-all icon-badge-pulse bg-emerald-100 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400">
+        <i id="modalConfirmIcon" class="fa-solid fa-circle-check"></i>
+      </div>
+
+      <!-- Judul & Teks Penjelasan Konfirmasi -->
+      <h3 id="modalConfirmTitle" class="font-black text-base text-slate-900 dark:text-white leading-snug">Konfirmasi Aksi</h3>
+      <p id="modalConfirmMessage" class="text-xs text-slate-500 dark:text-slate-400 mt-1.5 leading-relaxed">Apakah Anda yakin ingin melanjutkan aksi ini?</p>
+
+      <!-- Kartu Rincian Dokumen / Item (Nama, Keperluan, Nominal Rupiah) -->
+      <div id="modalConfirmDetailCard" class="my-4 p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60 text-left text-xs space-y-1 hidden">
+        <div class="flex items-center justify-between text-[11px] text-slate-400 font-semibold">
+          <span id="modalConfirmDetailLabel">Rincian Dokumen</span>
+          <span id="modalConfirmDetailDate"></span>
+        </div>
+        <p id="modalConfirmDetailTitle" class="font-extrabold text-slate-800 dark:text-slate-200 text-xs sm:text-sm"></p>
+        <p id="modalConfirmDetailAmount" class="font-black text-emerald-600 dark:text-emerald-400 text-sm sm:text-base"></p>
+      </div>
+
+      <!-- Dua Tombol Aksi: 'Kembali' dan 'Ya, Lanjutkan' -->
+      <div class="grid grid-cols-2 gap-2.5 mt-5">
+        <button type="button" id="btnModalConfirmCancel" onclick="closeConfirmModal()" class="w-full py-2.5 px-4 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs transition active:scale-95">
+          Kembali
+        </button>
+        <button type="button" id="btnModalConfirmProceed" class="w-full py-2.5 px-4 rounded-xl font-bold text-xs text-white shadow-md transition flex items-center justify-center gap-1.5 active:scale-95 bg-emerald-600 hover:bg-emerald-700">
+          Ya, Lanjutkan
+        </button>
+      </div>
+    </div>
+  </div>
+
   <?!= include('JavaScript'); ?>
 </body>
 </html>

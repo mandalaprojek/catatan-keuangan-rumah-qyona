@@ -207,4 +207,40 @@
       padding: 0.875rem !important;
     }
   }
+
+  /* Toast Notification Modern (Slide-in, Checklist & 3 Detik Auto-Dismiss) */
+  @keyframes toastSlideIn {
+    from {
+      opacity: 0;
+      transform: translateY(-16px) scale(0.94);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+
+  @keyframes toastProgressCountdown {
+    from { width: 100%; }
+    to { width: 0%; }
+  }
+
+  .toast-modern {
+    animation: toastSlideIn 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+
+  .toast-progress-bar {
+    animation: toastProgressCountdown 3s linear forwards;
+  }
+
+  /* Animasi Denyut Halus Ikon Modal Konfirmasi */
+  @keyframes iconBadgePulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.06); }
+    100% { transform: scale(1); }
+  }
+
+  .icon-badge-pulse {
+    animation: iconBadgePulse 2.2s infinite ease-in-out;
+  }
 </style>

@@ -142,15 +142,21 @@
     if (picker) picker.value = ym;
   }
 
+  /**
+   * ============================================================================
+   * TOAST NOTIFICATION MODERN (SLIDE-IN, CHECKLIST & 3 DETIK AUTO-DISMISS)
+   * ============================================================================
+   */
   function showToast(message, type = 'success') {
     const container = document.getElementById('toastContainer');
     if (!container) return;
+
     const toast = document.createElement('div');
     const bgMap = {
-      success: 'bg-emerald-600 text-white',
-      warning: 'bg-amber-500 text-white',
-      error: 'bg-rose-600 text-white',
-      info: 'bg-slate-800 text-white'
+      success: 'bg-emerald-600 text-white shadow-emerald-700/25',
+      warning: 'bg-amber-500 text-white shadow-amber-600/25',
+      error: 'bg-rose-600 text-white shadow-rose-700/25',
+      info: 'bg-slate-900 text-white shadow-slate-900/30'
     };
     const iconMap = {
       success: 'fa-circle-check',
@@ -158,17 +164,127 @@
       error: 'fa-circle-xmark',
       info: 'fa-bell'
     };
-    toast.className = `pointer-events-auto flex items-start gap-2.5 px-4 py-3 rounded-2xl shadow-xl text-xs font-bold animate-fade-in ${bgMap[type] || bgMap.info}`;
+
+    toast.className = `toast-modern pointer-events-auto relative overflow-hidden flex items-start gap-3 px-4 py-3.5 rounded-2xl shadow-xl text-xs font-bold transition-all duration-300 ${bgMap[type] || bgMap.info}`;
     toast.innerHTML = `
-      <i class="fa-solid ${iconMap[type] || iconMap.info} text-sm mt-0.5 shrink-0"></i>
-      <div class="flex-1 leading-relaxed">${message}</div>
+      <i class="fa-solid ${iconMap[type] || iconMap.info} text-base mt-0.5 shrink-0"></i>
+      <div class="flex-1 leading-snug pr-1 text-white">${message}</div>
+      <button type="button" onclick="dismissToast(this.parentElement)" class="text-white/80 hover:text-white transition p-0.5 ml-1 shrink-0" title="Tutup">
+        <i class="fa-solid fa-xmark text-xs"></i>
+      </button>
+      <div class="toast-progress-bar absolute bottom-0 left-0 h-1 bg-white/35"></div>
     `;
+
     container.appendChild(toast);
-    setTimeout(() => {
-      toast.style.opacity = '0';
-      toast.style.transition = 'opacity 0.25s ease';
-      setTimeout(() => toast.remove(), 250);
-    }, 3600);
+
+    // Otomatis hilang dalam 3 detik (3000 ms)
+    const timer = setTimeout(() => {
+      dismissToast(toast);
+    }, 3000);
+
+    toast._dismissTimer = timer;
+  }
+
+  function dismissToast(toastEl) {
+    if (!toastEl || toastEl._isDismissed) return;
+    toastEl._isDismissed = true;
+    if (toastEl._dismissTimer) clearTimeout(toastEl._dismissTimer);
+    toastEl.style.opacity = '0';
+    toastEl.style.transform = 'translateY(-10px) scale(0.95)';
+    toastEl.style.transition = 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)';
+    setTimeout(() => toastEl.remove(), 250);
+  }
+
+  /**
+   * ============================================================================
+   * POP-UP MODAL KONFIRMASI INTERAKTIF GLOBAL (TENGAH LAYAR)
+   * ============================================================================
+   */
+  let currentConfirmAction = null;
+
+  function showConfirmDialog({
+    title = 'Konfirmasi Aksi',
+    message = 'Apakah Anda yakin ingin melanjutkan?',
+    type = 'warning', // 'approve', 'reject', 'cancel', 'warning', 'delete'
+    detail = null,    // { label, title, amount, date }
+    confirmText = 'Ya, Lanjutkan',
+    cancelText = 'Kembali',
+    onConfirm = () => {}
+  }) {
+    const modal = document.getElementById('modalGlobalConfirm');
+    const iconBox = document.getElementById('modalConfirmIconBox');
+    const icon = document.getElementById('modalConfirmIcon');
+    const titleEl = document.getElementById('modalConfirmTitle');
+    const msgEl = document.getElementById('modalConfirmMessage');
+    const detailCard = document.getElementById('modalConfirmDetailCard');
+    const proceedBtn = document.getElementById('btnModalConfirmProceed');
+    const cancelBtn = document.getElementById('btnModalConfirmCancel');
+
+    if (!modal) return;
+
+    titleEl.textContent = title;
+    msgEl.innerHTML = message;
+    cancelBtn.textContent = cancelText;
+    proceedBtn.textContent = confirmText;
+
+    const typeConfigs = {
+      approve: {
+        boxClass: 'bg-emerald-100 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400',
+        iconClass: 'fa-solid fa-circle-check',
+        btnClass: 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/30'
+      },
+      reject: {
+        boxClass: 'bg-rose-100 text-rose-600 dark:bg-rose-950/60 dark:text-rose-400',
+        iconClass: 'fa-solid fa-circle-xmark',
+        btnClass: 'bg-rose-600 hover:bg-rose-700 shadow-rose-600/30'
+      },
+      cancel: {
+        boxClass: 'bg-rose-100 text-rose-600 dark:bg-rose-950/60 dark:text-rose-400',
+        iconClass: 'fa-solid fa-ban',
+        btnClass: 'bg-rose-600 hover:bg-rose-700 shadow-rose-600/30'
+      },
+      warning: {
+        boxClass: 'bg-amber-100 text-amber-600 dark:bg-amber-950/60 dark:text-amber-400',
+        iconClass: 'fa-solid fa-triangle-exclamation',
+        btnClass: 'bg-amber-600 hover:bg-amber-700 shadow-amber-600/30'
+      },
+      delete: {
+        boxClass: 'bg-rose-100 text-rose-600 dark:bg-rose-950/60 dark:text-rose-400',
+        iconClass: 'fa-solid fa-trash-can',
+        btnClass: 'bg-rose-600 hover:bg-rose-700 shadow-rose-600/30'
+      }
+    };
+
+    const cfg = typeConfigs[type] || typeConfigs.warning;
+    iconBox.className = `w-16 h-16 rounded-3xl mx-auto mb-4 flex items-center justify-center text-2xl shadow-inner transition-all icon-badge-pulse ${cfg.boxClass}`;
+    icon.className = cfg.iconClass;
+    proceedBtn.className = `w-full py-2.5 px-4 rounded-xl font-bold text-xs text-white shadow-md transition flex items-center justify-center gap-1.5 active:scale-95 ${cfg.btnClass}`;
+
+    if (detail) {
+      document.getElementById('modalConfirmDetailLabel').textContent = detail.label || 'Rincian Dokumen';
+      document.getElementById('modalConfirmDetailDate').textContent = detail.date || '';
+      document.getElementById('modalConfirmDetailTitle').textContent = detail.title || '';
+      document.getElementById('modalConfirmDetailAmount').textContent = detail.amount !== undefined ? ('Rp ' + formatRp(detail.amount)) : '';
+      detailCard.classList.remove('hidden');
+    } else {
+      detailCard.classList.add('hidden');
+    }
+
+    currentConfirmAction = onConfirm;
+    proceedBtn.onclick = async () => {
+      closeConfirmModal();
+      if (typeof currentConfirmAction === 'function') {
+        await currentConfirmAction();
+      }
+    };
+
+    modal.classList.remove('hidden');
+  }
+
+  function closeConfirmModal() {
+    const modal = document.getElementById('modalGlobalConfirm');
+    if (modal) modal.classList.add('hidden');
+    currentConfirmAction = null;
   }
 
   function formatRp(num) {
@@ -1529,16 +1645,33 @@
     }).join('');
   }
 
-  async function deleteHistoryItemServer(historyId) {
-    try {
-      const history = getChatHistory().filter(item => item.id !== historyId);
-      localStorage.setItem(CHAT_HISTORY_STORAGE_KEY, JSON.stringify(history));
-      renderChatHistoryList();
-      showToast('Baris riwayat dihapus.', 'info');
-      await callGasBackend('deleteAIChatHistoryEntry', APP_STATE.currentUser.id, historyId);
-    } catch (err) {
-      console.warn('Gagal menghapus riwayat dari database:', err);
-    }
+  function deleteHistoryItemServer(historyId) {
+    const item = getChatHistory().find(entry => entry.id === historyId);
+    showConfirmDialog({
+      title: 'Hapus Riwayat Perintah?',
+      message: 'Perintah ini akan dihapus dari histori lokal dan database Google Sheets.',
+      type: 'delete',
+      detail: item ? {
+        label: 'Histori Perintah AI',
+        title: item.prompt ? (item.prompt.length > 55 ? item.prompt.substring(0, 55) + '...' : item.prompt) : 'Perintah AI',
+        date: item.timestamp || ''
+      } : null,
+      confirmText: 'Ya, Hapus',
+      cancelText: 'Kembali',
+      onConfirm: async () => {
+        try {
+          const history = getChatHistory().filter(entry => entry.id !== historyId);
+          localStorage.setItem(CHAT_HISTORY_STORAGE_KEY, JSON.stringify(history));
+          renderChatHistoryList();
+          showToast('Baris riwayat berhasil dihapus.', 'info');
+          if (APP_STATE.currentUser && APP_STATE.currentUser.id) {
+            await callGasBackend('deleteAIChatHistoryEntry', APP_STATE.currentUser.id, historyId);
+          }
+        } catch (err) {
+          console.warn('Gagal menghapus riwayat dari database:', err);
+        }
+      }
+    });
   }
 
   let isChatHistoryDrawerOpen = true;
@@ -1558,11 +1691,18 @@
   }
 
   function clearChatHistoryUI() {
-    if (confirm('Hapus seluruh riwayat perintah AI di browser ini?')) {
-      localStorage.removeItem(CHAT_HISTORY_STORAGE_KEY);
-      renderChatHistoryList();
-      showToast('Histori perintah AI telah dibersihkan.', 'info');
-    }
+    showConfirmDialog({
+      title: 'Hapus Seluruh Histori?',
+      message: 'Apakah Anda yakin ingin mengosongkan seluruh riwayat perintah AI di browser ini?',
+      type: 'delete',
+      confirmText: 'Ya, Bersihkan',
+      cancelText: 'Kembali',
+      onConfirm: () => {
+        localStorage.removeItem(CHAT_HISTORY_STORAGE_KEY);
+        renderChatHistoryList();
+        showToast('Histori perintah AI telah dibersihkan.', 'info');
+      }
+    });
   }
 
   function executeHistoryItem(promptText) {
@@ -2117,46 +2257,75 @@
     }
   }
 
-  async function handleCancelTransaction(trxId) {
-    if (!confirm('Apakah Anda yakin ingin MEMBATALKAN transaksi ini?\n\nSaldo dompet akan otomatis dikembalikan dan status transaksi dicatat sebagai Dibatalkan.')) {
-      return;
-    }
-    // Optimistic UI Cancel (0ms)
-    if (APP_STATE.bootstrapData && APP_STATE.bootstrapData.transactions) {
-      const trx = APP_STATE.bootstrapData.transactions.find(t => t.id === trxId);
-      if (trx) {
-        trx.approvalStatus = 'Dibatalkan';
-        trx.canEdit = false;
-      }
-      renderAllViews(APP_STATE.bootstrapData, true);
-    }
-    showToast('🚫 Transaksi dibatalkan & saldo dompet dikembalikan!', 'info');
+  function handleCancelTransaction(trxId) {
+    const trx = APP_STATE.bootstrapData?.transactions?.find(t => t.id === trxId);
+    showConfirmDialog({
+      title: 'Batalkan Transaksi Ini?',
+      message: 'Saldo dompet akan otomatis dikembalikan dan transaksi akan diberi label status <b>Dibatalkan</b>.',
+      type: 'cancel',
+      detail: trx ? {
+        label: 'Transaksi ' + trx.category,
+        title: trx.description,
+        amount: trx.amount,
+        date: trx.date
+      } : null,
+      confirmText: 'Ya, Batalkan',
+      cancelText: 'Kembali',
+      onConfirm: async () => {
+        // Optimistic UI Cancel (0ms)
+        if (APP_STATE.bootstrapData && APP_STATE.bootstrapData.transactions) {
+          const item = APP_STATE.bootstrapData.transactions.find(t => t.id === trxId);
+          if (item) {
+            item.approvalStatus = 'Dibatalkan';
+            item.canEdit = false;
+          }
+          renderAllViews(APP_STATE.bootstrapData, true);
+        }
+        showToast('Transaksi dibatalkan & saldo dikembalikan!', 'success');
 
-    try {
-      const res = await callGasBackend('deleteTransaction', APP_STATE.currentUser.id, trxId);
-      if (res && res.message) showToast(res.message, 'success');
-      await refreshDashboardData(true);
-    } catch (err) {
-      showToast(err.message, 'error');
-      await refreshDashboardData(true);
-    }
+        try {
+          const res = await callGasBackend('deleteTransaction', APP_STATE.currentUser.id, trxId);
+          if (res && res.message) showToast(res.message, 'success');
+          await refreshDashboardData(true);
+        } catch (err) {
+          showToast(err.message, 'error');
+          await refreshDashboardData(true);
+        }
+      }
+    });
   }
   const handleDeleteTransaction = handleCancelTransaction;
 
-  async function handleApproveChildTrx(trxId) {
-    if (APP_STATE.bootstrapData && APP_STATE.bootstrapData.transactions) {
-      const t = APP_STATE.bootstrapData.transactions.find(x => x.id === trxId);
-      if (t) t.status = 'Approved';
-      renderAllViews(APP_STATE.bootstrapData, true);
-    }
-    try {
-      const res = await callGasBackend('approveChildTransaction', APP_STATE.currentUser.id, trxId);
-      showToast(res.message, 'success');
-      refreshDashboardData(true);
-    } catch (err) {
-      showToast(err.message, 'error');
-      refreshDashboardData(true);
-    }
+  function handleApproveChildTrx(trxId) {
+    const t = APP_STATE.bootstrapData?.transactions?.find(x => x.id === trxId);
+    showConfirmDialog({
+      title: 'Setujui Transaksi Belanja Anak?',
+      message: `Setujui pengeluaran dari <b>${t ? t.memberName : 'Anak'}</b> untuk masuk resmi ke pembukuan keluarga?`,
+      type: 'approve',
+      detail: t ? {
+        label: 'Belanja ' + (t.category || 'Anak'),
+        title: t.description,
+        amount: t.amount,
+        date: t.date
+      } : null,
+      confirmText: 'Ya, Setujui',
+      cancelText: 'Kembali',
+      onConfirm: async () => {
+        if (APP_STATE.bootstrapData && APP_STATE.bootstrapData.transactions) {
+          const item = APP_STATE.bootstrapData.transactions.find(x => x.id === trxId);
+          if (item) item.approvalStatus = 'Disetujui';
+          renderAllViews(APP_STATE.bootstrapData, true);
+        }
+        try {
+          const res = await callGasBackend('approveChildTransaction', APP_STATE.currentUser.id, trxId);
+          showToast(res.message, 'success');
+          await refreshDashboardData(true);
+        } catch (err) {
+          showToast(err.message, 'error');
+          await refreshDashboardData(true);
+        }
+      }
+    });
   }
 
   /**
@@ -2275,11 +2444,11 @@
 
           const adminActions = (isAdmin && isPending) ? `
             <div class="flex items-center gap-2">
-              <button onclick="handleDecisionFundRequest('${req.id}', 'APPROVE')" class="px-3 py-1.5 rounded-xl bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 transition">
-                <i class="fa-solid fa-check mr-1"></i> Setujui & Cairkan
+              <button onclick="confirmApproveFundRequest('${req.id}')" class="px-3.5 py-1.5 rounded-xl bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 shadow-sm transition active:scale-95 flex items-center gap-1.5" title="Setujui dan cairkan dana">
+                <i class="fa-solid fa-check"></i> Setuju
               </button>
-              <button onclick="handleDecisionFundRequest('${req.id}', 'REJECT')" class="px-3 py-1.5 rounded-xl bg-rose-50 dark:bg-rose-950/60 text-rose-600 text-xs font-bold hover:bg-rose-100 transition">
-                Tolak
+              <button onclick="confirmRejectFundRequest('${req.id}')" class="px-3.5 py-1.5 rounded-xl bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 text-xs font-bold hover:bg-rose-100 dark:hover:bg-rose-900/40 transition active:scale-95 flex items-center gap-1.5" title="Batalkan atau tolak permohonan dana">
+                <i class="fa-solid fa-xmark"></i> Batal
               </button>
             </div>
           ` : '';
@@ -2333,8 +2502,8 @@
                   <i class="fa-solid fa-circle-check"></i> Lunas
                 </span>
               ` : `
-                <button onclick="handleMarkBillPaid('${b.id}')" class="px-3.5 py-2 rounded-xl qyona-gradient text-white text-xs font-bold shadow hover:opacity-95 transition">
-                  Tandai Lunas
+                <button onclick="confirmMarkBillPaid('${b.id}')" class="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-sm transition active:scale-95 flex items-center gap-1.5">
+                  <i class="fa-solid fa-check"></i> Tandai Lunas
                 </button>
               `}
             </div>
@@ -2362,6 +2531,66 @@
     } catch (err) {
       showToast(err.message, 'error');
     }
+  }
+
+  function confirmApproveFundRequest(reqId) {
+    const req = APP_STATE.bootstrapData?.fundRequests?.find(r => r.id === reqId);
+    showConfirmDialog({
+      title: 'Setujui Pencairan Dana?',
+      message: `Persetujuan ini akan otomatis mencairkan dana untuk <b>${req ? req.memberName : 'Anak'}</b> dan memotong saldo dompet keluarga.`,
+      type: 'approve',
+      detail: req ? {
+        label: 'Permohonan Dana ' + req.memberName,
+        title: req.reason || 'Keperluan Tambahan',
+        amount: req.amount,
+        date: req.date
+      } : null,
+      confirmText: 'Ya, Lanjutkan',
+      cancelText: 'Kembali',
+      onConfirm: async () => {
+        await handleDecisionFundRequest(reqId, 'APPROVE');
+      }
+    });
+  }
+
+  function confirmRejectFundRequest(reqId) {
+    const req = APP_STATE.bootstrapData?.fundRequests?.find(r => r.id === reqId);
+    showConfirmDialog({
+      title: 'Tolak Permohonan Dana?',
+      message: `Apakah Anda yakin ingin membatalkan/menolak pengajuan dana dari <b>${req ? req.memberName : 'Anak'}</b>?`,
+      type: 'reject',
+      detail: req ? {
+        label: 'Permohonan Dana ' + req.memberName,
+        title: req.reason || 'Keperluan Tambahan',
+        amount: req.amount,
+        date: req.date
+      } : null,
+      confirmText: 'Ya, Lanjutkan',
+      cancelText: 'Kembali',
+      onConfirm: async () => {
+        await handleDecisionFundRequest(reqId, 'REJECT');
+      }
+    });
+  }
+
+  function confirmMarkBillPaid(billId) {
+    const bill = APP_STATE.bootstrapData?.bills?.find(b => b.id === billId);
+    showConfirmDialog({
+      title: 'Tandai Tagihan Telah Lunas?',
+      message: `Konfirmasi pembayaran untuk tagihan <b>${bill ? bill.name : 'Rutin'}</b> ini? Status tagihan akan diubah menjadi Lunas.`,
+      type: 'approve',
+      detail: bill ? {
+        label: 'Tagihan Rutin Keluarga',
+        title: bill.name,
+        amount: bill.amount,
+        date: 'Jatuh Tempo Tgl ' + (bill.dueDay || '-')
+      } : null,
+      confirmText: 'Ya, Lanjutkan',
+      cancelText: 'Kembali',
+      onConfirm: async () => {
+        await handleMarkBillPaid(billId);
+      }
+    });
   }
 
   async function handleDecisionFundRequest(reqId, decision) {
@@ -3003,14 +3232,26 @@
       showToast('Hanya Admin (Ayah/Bunda) yang dapat menyetujui pencairan dana.', 'warning');
       return;
     }
-    try {
-      const res = await callGasBackend('processFundRequestApproval', APP_STATE.currentUser.id, reqId, decision);
-      appendChatMessage('bot', `⚡ *Callback Inline Diproses:* ${res.message}`);
-      showToast(res.message, decision === 'APPROVE' ? 'success' : 'info');
-      await refreshDashboardData(true);
-    } catch (err) {
-      showToast(err.message, 'error');
-    }
+    const isApprove = decision === 'APPROVE';
+    showConfirmDialog({
+      title: isApprove ? 'Setujui Permintaan Dana?' : 'Tolak Permintaan Dana?',
+      message: isApprove
+        ? `Konfirmasi persetujuan pencairan dana untuk ID: <b>${reqId}</b> melalui bot interaktif?`
+        : `Konfirmasi penolakan permintaan dana untuk ID: <b>${reqId}</b>?`,
+      type: isApprove ? 'approve' : 'reject',
+      confirmText: 'Ya, Lanjutkan',
+      cancelText: 'Kembali',
+      onConfirm: async () => {
+        try {
+          const res = await callGasBackend('processFundRequestApproval', APP_STATE.currentUser.id, reqId, decision);
+          appendChatMessage('bot', `⚡ *Callback Inline Diproses:* ${res.message}`);
+          showToast(res.message, isApprove ? 'success' : 'info');
+          await refreshDashboardData(true);
+        } catch (err) {
+          showToast(err.message, 'error');
+        }
+      }
+    });
   }
 
   /**
