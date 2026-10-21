@@ -1858,9 +1858,15 @@
     currentConfirmAction = onConfirm;
     if (proceedBtn) {
       proceedBtn.onclick = async () => {
+        const actionToExecute = currentConfirmAction;
         closeConfirmModal();
-        if (typeof currentConfirmAction === 'function') {
-          await currentConfirmAction();
+        if (typeof actionToExecute === 'function') {
+          try {
+            await actionToExecute();
+          } catch (err) {
+            console.error('Error saat mengeksekusi aksi konfirmasi:', err);
+            showToast(err.message || 'Terjadi kesalahan sistem.', 'error');
+          }
         }
       };
     }
@@ -1973,13 +1979,21 @@
     showToast('Komponen persetujuan dokumen siap diuji kembali.', 'info');
   }
 
-  // Registrasi window global untuk akses instan
+  // Registrasi window global untuk akses instan dari segala konteks & onclick
   window.triggerDocApprovalAction = triggerDocApprovalAction;
   window.resetDocApprovalDemo = resetDocApprovalDemo;
   window.showConfirmDialog = showConfirmDialog;
   window.closeConfirmModal = closeConfirmModal;
   window.showToast = showToast;
   window.dismissToast = dismissToast;
+  window.confirmApproveFundRequest = confirmApproveFundRequest;
+  window.confirmRejectFundRequest = confirmRejectFundRequest;
+  window.confirmMarkBillPaid = confirmMarkBillPaid;
+  window.handleApproveChildTrx = handleApproveChildTrx;
+  window.handleCancelTransaction = handleCancelTransaction;
+  window.handleDeleteTransaction = handleCancelTransaction;
+  window.deleteHistoryItemServer = deleteHistoryItemServer;
+  window.clearChatHistoryUI = clearChatHistoryUI;
 
   function formatRp(num) {
     const n = Math.round(Number(num || 0));
@@ -4242,6 +4256,13 @@
       confirmText: 'Ya, Lanjutkan',
       cancelText: 'Kembali',
       onConfirm: async () => {
+        // Optimistic UI update (0ms respon instan!)
+        if (APP_STATE.bootstrapData?.fundRequests) {
+          const item = APP_STATE.bootstrapData.fundRequests.find(r => r.id === reqId);
+          if (item) item.status = 'Disetujui';
+          renderAllViews(APP_STATE.bootstrapData, true);
+        }
+        showToast('Permohonan dana berhasil disetujui & dicairkan!', 'success');
         await handleDecisionFundRequest(reqId, 'APPROVE');
       }
     });
@@ -4262,6 +4283,13 @@
       confirmText: 'Ya, Lanjutkan',
       cancelText: 'Kembali',
       onConfirm: async () => {
+        // Optimistic UI update (0ms)
+        if (APP_STATE.bootstrapData?.fundRequests) {
+          const item = APP_STATE.bootstrapData.fundRequests.find(r => r.id === reqId);
+          if (item) item.status = 'Ditolak';
+          renderAllViews(APP_STATE.bootstrapData, true);
+        }
+        showToast('Permohonan dana telah ditolak.', 'info');
         await handleDecisionFundRequest(reqId, 'REJECT');
       }
     });
@@ -4282,6 +4310,13 @@
       confirmText: 'Ya, Lanjutkan',
       cancelText: 'Kembali',
       onConfirm: async () => {
+        // Optimistic UI update (0ms)
+        if (APP_STATE.bootstrapData?.bills) {
+          const item = APP_STATE.bootstrapData.bills.find(b => b.id === billId);
+          if (item) item.status = 'Lunas';
+          renderAllViews(APP_STATE.bootstrapData, true);
+        }
+        showToast(`Tagihan "${bill ? bill.name : 'Rutin'}" berhasil ditandai Lunas!`, 'success');
         await handleMarkBillPaid(billId);
       }
     });
@@ -5347,6 +5382,10 @@
         const t = DB.transactions.find(x => x.id === trxId);
         if (t) t.approvalStatus = 'Disetujui';
         return { success: true, message: `Transaksi ${trxId} telah disetujui Admin.` };
+      },
+
+      deleteAIChatHistoryEntry(memberId, historyId) {
+        return { success: true, message: 'Riwayat perintah AI berhasil dihapus.' };
       },
 
       processChatbotMessage(memberId, rawMessage, confirmedCategory) {
