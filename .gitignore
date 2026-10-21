@@ -1,0 +1,12 @@
+# Konfigurasi Google Clasp lokal (aman tersimpan di komputer lokal Anda)
+.clasp.json
+.claspignore
+
+# Script build lokal
+prepare_files.js
+build_bundle.js
+
+# File sementara & sistem
+Thumbs.db
+.DS_Store
+*.log
