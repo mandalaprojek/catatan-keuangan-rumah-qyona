@@ -860,6 +860,42 @@
             </div>
           </div>
 
+          <!-- Inisialisasi Data Baru / Reset Bersih Pabrik (Mulai dari Nol) -->
+          <div class="p-5 rounded-3xl bg-linear-to-br from-rose-50 to-orange-50 dark:from-rose-950/20 dark:to-orange-950/20 border border-rose-200 dark:border-rose-900/60 shadow-sm space-y-4">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <div class="flex items-center gap-3">
+                <div class="w-12 h-12 rounded-2xl bg-rose-500/10 text-rose-600 dark:text-rose-400 flex items-center justify-center text-xl shrink-0">
+                  <i class="fa-solid fa-wand-magic-sparkles"></i>
+                </div>
+                <div>
+                  <div class="flex items-center gap-2">
+                    <h3 class="font-extrabold text-base text-slate-900 dark:text-white">Mulai Pemakaian Riil: Inisialisasi Data Baru / Reset Bersih</h3>
+                    <span class="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-rose-100 text-rose-700 dark:bg-rose-900/50 dark:text-rose-300">Admin Only</span>
+                  </div>
+                  <p class="text-xs text-slate-600 dark:text-slate-400 mt-0.5">Kosongkan semua transaksi & pengajuan demo, lalu daftarkan nomor WhatsApp dan saldo kas riil keluarga Anda dari nol.</p>
+                </div>
+              </div>
+              <button type="button" onclick="openFreshSetupWizard()" class="px-4 py-2.5 rounded-xl bg-linear-to-r from-rose-600 to-orange-600 hover:from-rose-700 hover:to-orange-700 text-white text-xs font-bold shadow-md transition flex items-center gap-2 active:scale-95">
+                <i class="fa-solid fa-rocket"></i>
+                <span>Buka Setup Wizard (Mulai Dari Nol)</span>
+              </button>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1 text-xs text-slate-600 dark:text-slate-400">
+              <div class="p-3 rounded-2xl bg-white/80 dark:bg-slate-900/80 border border-rose-100 dark:border-rose-950">
+                <p class="font-bold text-slate-800 dark:text-slate-200 mb-0.5"><i class="fa-solid fa-broom text-rose-500 mr-1.5"></i>1. Pembersihan Total</p>
+                <p class="text-[11px]">Riwayat transaksi demo, tagihan demo, dan pengajuan dana dibersihkan 100%.</p>
+              </div>
+              <div class="p-3 rounded-2xl bg-white/80 dark:bg-slate-900/80 border border-rose-100 dark:border-rose-950">
+                <p class="font-bold text-slate-800 dark:text-slate-200 mb-0.5"><i class="fa-solid fa-users text-orange-500 mr-1.5"></i>2. Anggota & WA Riil</p>
+                <p class="text-[11px]">Daftarkan nama, WhatsApp (628...), dan PIN login baru untuk Ayah, Bunda & Anak.</p>
+              </div>
+              <div class="p-3 rounded-2xl bg-white/80 dark:bg-slate-900/80 border border-rose-100 dark:border-rose-950">
+                <p class="font-bold text-slate-800 dark:text-slate-200 mb-0.5"><i class="fa-solid fa-wallet text-emerald-500 mr-1.5"></i>3. Saldo Awal Aktual</p>
+                <p class="text-[11px]">Setel saldo awal Bank, Uang Tunai Pegangan, dan E-Wallet sesuai kondisi riil Anda hari ini.</p>
+              </div>
+            </div>
+          </div>
+
         </div>
 
       </div>
@@ -1268,6 +1304,271 @@
           <p id="logoUploadStatus" class="text-[10px] text-emerald-600 font-bold hidden"></p>
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- ========================================================================
+       MODAL: FRESH SETUP WIZARD (INISIALISASI DATA BERSIH DARI NOL)
+       Mulai pemakaian riil dengan 0 data dummy, nomor WhatsApp asli, & kas riil
+       ======================================================================== -->
+  <div id="modalFreshSetupWizard" class="fixed inset-0 z-50 hidden bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
+    <div class="bg-white dark:bg-slate-900 rounded-3xl max-w-2xl w-full p-5 sm:p-6 border border-slate-200 dark:border-slate-800 shadow-2xl max-h-[92vh] flex flex-col animate-fade-in">
+      <!-- Modal Header -->
+      <div class="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800 shrink-0">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-2xl bg-linear-to-br from-rose-500 to-orange-500 text-white flex items-center justify-center text-lg shadow-sm shrink-0">
+            <i class="fa-solid fa-wand-magic-sparkles"></i>
+          </div>
+          <div>
+            <h3 class="font-black text-base sm:text-lg text-slate-900 dark:text-white leading-tight">Inisialisasi Data Baru / Reset Bersih Pabrik</h3>
+            <p class="text-xs text-slate-500 dark:text-slate-400">Siapkan aplikasi dari nol dengan nomor WhatsApp & saldo kas riil keluarga Anda</p>
+          </div>
+        </div>
+        <button type="button" onclick="closeModal('modalFreshSetupWizard')" class="w-8 h-8 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 flex items-center justify-center transition">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <!-- Modal Body (Scrollable) -->
+      <form onsubmit="submitFreshSetupWizard(event)" class="overflow-y-auto space-y-5 py-4 pr-1 text-xs">
+        
+        <!-- Peringatan Keamanan -->
+        <div class="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-800 dark:text-amber-300 flex items-start gap-2.5">
+          <i class="fa-solid fa-triangle-exclamation text-amber-600 dark:text-amber-400 text-sm mt-0.5 shrink-0"></i>
+          <div class="leading-relaxed">
+            <p class="font-extrabold">Perhatian Pembersihan Bersih (Clean Slate)</p>
+            <p class="text-[11px] opacity-90">Aksi ini akan menghapus seluruh data transaksi demo, tagihan demo, pengajuan dana anak, dan obrolan AI yang ada di database Google Sheets. Hanya struktur kolom header yang dipertahankan.</p>
+          </div>
+        </div>
+
+        <!-- Bagian 1: Anggota Keluarga & Nomor WhatsApp Riil -->
+        <div class="space-y-3">
+          <div class="flex items-center justify-between pb-1.5 border-b border-slate-100 dark:border-slate-800">
+            <h4 class="font-black text-xs sm:text-sm text-slate-900 dark:text-white flex items-center gap-2">
+              <span class="w-6 h-6 rounded-lg bg-teal-500/10 text-teal-600 flex items-center justify-center font-bold text-xs">1</span>
+              <span>Anggota Keluarga & Nomor WhatsApp Riil</span>
+            </h4>
+            <span class="text-[11px] text-slate-400">Format WA: 0812... / 628...</span>
+          </div>
+
+          <!-- Ayah (Admin) -->
+          <div class="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60 space-y-2.5">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <span class="text-base">👨‍💼</span>
+                <span class="font-extrabold text-slate-900 dark:text-white">Profil Ayah (Admin Utama)</span>
+              </div>
+              <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-teal-100 dark:bg-teal-900/60 text-teal-700 dark:text-teal-300">Admin</span>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <div>
+                <label class="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">Nama Panggilan</label>
+                <input id="wizAyahName" type="text" required value="Ayah" class="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-bold">
+              </div>
+              <div>
+                <label class="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">Nomor WhatsApp Riil</label>
+                <input id="wizAyahWa" type="tel" required placeholder="Contoh: 081234567890" class="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-mono">
+              </div>
+              <div>
+                <label class="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">PIN Login (4-6 Digit)</label>
+                <input id="wizAyahPin" type="password" required value="1234" maxlength="6" class="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-mono tracking-widest text-center">
+              </div>
+            </div>
+          </div>
+
+          <!-- Bunda (Admin) -->
+          <div class="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60 space-y-2.5">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <span class="text-base">👩‍💼</span>
+                <span class="font-extrabold text-slate-900 dark:text-white">Profil Bunda (Admin Utama)</span>
+              </div>
+              <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-teal-100 dark:bg-teal-900/60 text-teal-700 dark:text-teal-300">Admin</span>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <div>
+                <label class="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">Nama Panggilan</label>
+                <input id="wizBundaName" type="text" required value="Bunda" class="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-bold">
+              </div>
+              <div>
+                <label class="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">Nomor WhatsApp Riil</label>
+                <input id="wizBundaWa" type="tel" required placeholder="Contoh: 081234567891" class="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-mono">
+              </div>
+              <div>
+                <label class="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">PIN Login (4-6 Digit)</label>
+                <input id="wizBundaPin" type="password" required value="1234" maxlength="6" class="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-mono tracking-widest text-center">
+              </div>
+            </div>
+          </div>
+
+          <!-- Anak 1 (Opsional / Member) -->
+          <div class="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60 space-y-2.5">
+            <div class="flex items-center justify-between">
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" id="wizChild1Active" checked onchange="toggleChildAccountInputs(1)" class="rounded text-teal-600 focus:ring-teal-500 w-4 h-4">
+                <span class="text-base">👦🎒</span>
+                <span class="font-extrabold text-slate-900 dark:text-white">Aktifkan Akun Anak 1</span>
+              </label>
+              <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 dark:bg-amber-900/60 text-amber-700 dark:text-amber-300">Member Terbatas</span>
+            </div>
+            <div id="wizChild1Fields" class="grid grid-cols-1 sm:grid-cols-4 gap-2">
+              <div>
+                <label class="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">Nama Panggilan</label>
+                <input id="wizChild1Name" type="text" value="Kakak" placeholder="Nama Anak 1" class="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-bold">
+              </div>
+              <div>
+                <label class="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">Nomor WA Anak</label>
+                <input id="wizChild1Wa" type="tel" placeholder="0812..." class="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-mono">
+              </div>
+              <div>
+                <label class="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">Kuota Jajan/Bln (Rp)</label>
+                <input id="wizChild1Quota" type="number" value="500000" class="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-bold">
+              </div>
+              <div>
+                <label class="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">PIN Login</label>
+                <input id="wizChild1Pin" type="password" value="1111" maxlength="6" class="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-mono text-center">
+              </div>
+            </div>
+          </div>
+
+          <!-- Anak 2 (Opsional / Member) -->
+          <div class="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60 space-y-2.5">
+            <div class="flex items-center justify-between">
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" id="wizChild2Active" checked onchange="toggleChildAccountInputs(2)" class="rounded text-teal-600 focus:ring-teal-500 w-4 h-4">
+                <span class="text-base">👧🎨</span>
+                <span class="font-extrabold text-slate-900 dark:text-white">Aktifkan Akun Anak 2</span>
+              </label>
+              <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 dark:bg-amber-900/60 text-amber-700 dark:text-amber-300">Member Terbatas</span>
+            </div>
+            <div id="wizChild2Fields" class="grid grid-cols-1 sm:grid-cols-4 gap-2">
+              <div>
+                <label class="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">Nama Panggilan</label>
+                <input id="wizChild2Name" type="text" value="Adik" placeholder="Nama Anak 2" class="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-bold">
+              </div>
+              <div>
+                <label class="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">Nomor WA Anak</label>
+                <input id="wizChild2Wa" type="tel" placeholder="0812..." class="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-mono">
+              </div>
+              <div>
+                <label class="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">Kuota Jajan/Bln (Rp)</label>
+                <input id="wizChild2Quota" type="number" value="300000" class="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-bold">
+              </div>
+              <div>
+                <label class="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">PIN Login</label>
+                <input id="wizChild2Pin" type="password" value="2222" maxlength="6" class="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-mono text-center">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Bagian 2: Dompet & Saldo Kas Awal Riil Hari Ini -->
+        <div class="space-y-3">
+          <div class="flex items-center justify-between pb-1.5 border-b border-slate-100 dark:border-slate-800">
+            <h4 class="font-black text-xs sm:text-sm text-slate-900 dark:text-white flex items-center gap-2">
+              <span class="w-6 h-6 rounded-lg bg-teal-500/10 text-teal-600 flex items-center justify-center font-bold text-xs">2</span>
+              <span>Dompet & Saldo Kas Awal Hari Ini</span>
+            </h4>
+            <span class="text-[11px] text-slate-400">Saldo riil di rekening/dompet Anda</span>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <!-- Dompet 1: Bank -->
+            <div class="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60 space-y-2">
+              <div class="flex items-center gap-2 text-blue-600 dark:text-blue-400 font-bold text-xs">
+                <i class="fa-solid fa-building-columns"></i>
+                <span>Rekening Bank Utama</span>
+              </div>
+              <div>
+                <label class="block text-[11px] text-slate-500 mb-1">Nama Bank / Rekening</label>
+                <input id="wizWlt1Name" type="text" required value="BCA Utama" class="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-bold">
+              </div>
+              <div>
+                <label class="block text-[11px] text-slate-500 mb-1">Saldo Kas Awal Hari Ini (Rp)</label>
+                <input id="wizWlt1Bal" type="number" required value="5000000" class="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-extrabold text-emerald-600 dark:text-emerald-400">
+              </div>
+            </div>
+
+            <!-- Dompet 2: Tunai -->
+            <div class="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60 space-y-2">
+              <div class="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 font-bold text-xs">
+                <i class="fa-solid fa-money-bill-wave"></i>
+                <span>Uang Tunai / Cash Dompet</span>
+              </div>
+              <div>
+                <label class="block text-[11px] text-slate-500 mb-1">Nama Dompet Tunai</label>
+                <input id="wizWlt2Name" type="text" required value="Uang Tunai Dapur" class="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-bold">
+              </div>
+              <div>
+                <label class="block text-[11px] text-slate-500 mb-1">Saldo Kas Awal Hari Ini (Rp)</label>
+                <input id="wizWlt2Bal" type="number" required value="1000000" class="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-extrabold text-emerald-600 dark:text-emerald-400">
+              </div>
+            </div>
+
+            <!-- Dompet 3: E-Wallet -->
+            <div class="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60 space-y-2">
+              <div class="flex items-center gap-2 text-purple-600 dark:text-purple-400 font-bold text-xs">
+                <i class="fa-solid fa-mobile-screen"></i>
+                <span>E-Wallet / QRIS</span>
+              </div>
+              <div>
+                <label class="block text-[11px] text-slate-500 mb-1">Nama E-Wallet</label>
+                <input id="wizWlt3Name" type="text" required value="GoPay / QRIS" class="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-bold">
+              </div>
+              <div>
+                <label class="block text-[11px] text-slate-500 mb-1">Saldo Kas Awal Hari Ini (Rp)</label>
+                <input id="wizWlt3Bal" type="number" required value="500000" class="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-extrabold text-emerald-600 dark:text-emerald-400">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Bagian 3: Target Anggaran Bulanan Pokok -->
+        <div class="space-y-3">
+          <div class="flex items-center justify-between pb-1.5 border-b border-slate-100 dark:border-slate-800">
+            <h4 class="font-black text-xs sm:text-sm text-slate-900 dark:text-white flex items-center gap-2">
+              <span class="w-6 h-6 rounded-lg bg-teal-500/10 text-teal-600 flex items-center justify-center font-bold text-xs">3</span>
+              <span>Target Anggaran Bulanan Pokok</span>
+            </h4>
+            <span class="text-[11px] text-slate-400">Batas pengeluaran per bulan (Rp)</span>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+            <div>
+              <label class="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">Dapur & Makanan (Rp)</label>
+              <input id="wizCatDapur" type="number" value="3500000" class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-bold">
+            </div>
+            <div>
+              <label class="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">Tagihan & Utilitas (Rp)</label>
+              <input id="wizCatTagihan" type="number" value="2000000" class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-bold">
+            </div>
+            <div>
+              <label class="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">Transportasi & BBM (Rp)</label>
+              <input id="wizCatTrans" type="number" value="1000000" class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-bold">
+            </div>
+            <div>
+              <label class="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">Jajan / Anak (Rp)</label>
+              <input id="wizCatJajan" type="number" value="800000" class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-bold">
+            </div>
+            <div>
+              <label class="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">Kesehatan & Darurat (Rp)</label>
+              <input id="wizCatDarurat" type="number" value="800000" class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-bold">
+            </div>
+          </div>
+        </div>
+
+        <!-- Tombol Aksi Bawah -->
+        <div class="flex items-center justify-end gap-2.5 pt-4 border-t border-slate-100 dark:border-slate-800">
+          <button type="button" onclick="closeModal('modalFreshSetupWizard')" class="px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs transition">
+            Batal
+          </button>
+          <button type="submit" class="px-5 py-2.5 rounded-xl bg-linear-to-r from-rose-600 to-orange-600 hover:from-rose-700 hover:to-orange-700 text-white font-bold text-xs shadow-md transition flex items-center gap-2 active:scale-95">
+            <i class="fa-solid fa-check"></i>
+            <span>Terapkan & Mulai Pemakaian Riil</span>
+          </button>
+        </div>
+
+      </form>
     </div>
   </div>
 

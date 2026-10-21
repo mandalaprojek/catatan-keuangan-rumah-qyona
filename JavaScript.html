@@ -423,6 +423,9 @@
   window.handleDeleteTransaction = handleCancelTransaction;
   window.deleteHistoryItemServer = deleteHistoryItemServer;
   window.clearChatHistoryUI = clearChatHistoryUI;
+  window.openFreshSetupWizard = openFreshSetupWizard;
+  window.toggleChildAccountInputs = toggleChildAccountInputs;
+  window.submitFreshSetupWizard = submitFreshSetupWizard;
 
   function formatRp(num) {
     const n = Math.round(Number(num || 0));
@@ -3058,6 +3061,158 @@
 
   /**
    * ============================================================================
+   * SETUP WIZARD: INISIALISASI DATA BERSIH DARI NOL (FACTORY RESET)
+   * ============================================================================
+   */
+  function openFreshSetupWizard() {
+    if (APP_STATE.currentUser?.role !== 'Admin') {
+      showToast('Akses ditolak: Hanya Admin (Ayah/Bunda) yang dapat mereset data aplikasi.', 'error');
+      return;
+    }
+    const modal = document.getElementById('modalFreshSetupWizard');
+    if (modal) {
+      modal.classList.remove('hidden');
+    }
+  }
+
+  function formatWhatsAppNumber(phone) {
+    let p = String(phone || '').replace(/[^\d]/g, '');
+    if (p.startsWith('08')) {
+      p = '628' + p.slice(2);
+    } else if (p.startsWith('8')) {
+      p = '628' + p.slice(1);
+    }
+    return p;
+  }
+
+  function toggleChildAccountInputs(childIndex) {
+    const chk = document.getElementById(`wizChild${childIndex}Active`);
+    const fields = document.getElementById(`wizChild${childIndex}Fields`);
+    if (chk && fields) {
+      if (chk.checked) {
+        fields.classList.remove('hidden');
+      } else {
+        fields.classList.add('hidden');
+      }
+    }
+  }
+
+  async function submitFreshSetupWizard(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    if (APP_STATE.currentUser?.role !== 'Admin') {
+      showToast('Akses ditolak: Hanya Admin yang dapat mereset database.', 'error');
+      return;
+    }
+
+    // 1. Ambil data dari form wizard
+    const ayahName = (document.getElementById('wizAyahName')?.value || 'Ayah').trim();
+    const ayahWa = formatWhatsAppNumber(document.getElementById('wizAyahWa')?.value || '');
+    const ayahPin = (document.getElementById('wizAyahPin')?.value || '1234').trim();
+
+    const bundaName = (document.getElementById('wizBundaName')?.value || 'Bunda').trim();
+    const bundaWa = formatWhatsAppNumber(document.getElementById('wizBundaWa')?.value || '');
+    const bundaPin = (document.getElementById('wizBundaPin')?.value || '1234').trim();
+
+    const members = [
+      { id: 'USR-01', name: ayahName, role: 'Admin', waId: ayahWa, tgId: '', pin: ayahPin, avatar: '👨‍💼', allowanceQuota: 0 },
+      { id: 'USR-02', name: bundaName, role: 'Admin', waId: bundaWa, tgId: '', pin: bundaPin, avatar: '👩‍💼', allowanceQuota: 0 }
+    ];
+
+    const child1Active = document.getElementById('wizChild1Active')?.checked;
+    if (child1Active) {
+      const c1Name = (document.getElementById('wizChild1Name')?.value || 'Anak 1').trim();
+      const c1Wa = formatWhatsAppNumber(document.getElementById('wizChild1Wa')?.value || '');
+      const c1Pin = (document.getElementById('wizChild1Pin')?.value || '1111').trim();
+      const c1Quota = Math.max(0, Number(document.getElementById('wizChild1Quota')?.value || 500000));
+      members.push({ id: 'USR-03', name: c1Name, role: 'Member', waId: c1Wa, tgId: '', pin: c1Pin, avatar: '👦🎒', allowanceQuota: c1Quota });
+    }
+
+    const child2Active = document.getElementById('wizChild2Active')?.checked;
+    if (child2Active) {
+      const c2Name = (document.getElementById('wizChild2Name')?.value || 'Anak 2').trim();
+      const c2Wa = formatWhatsAppNumber(document.getElementById('wizChild2Wa')?.value || '');
+      const c2Pin = (document.getElementById('wizChild2Pin')?.value || '2222').trim();
+      const c2Quota = Math.max(0, Number(document.getElementById('wizChild2Quota')?.value || 300000));
+      members.push({ id: 'USR-04', name: c2Name, role: 'Member', waId: c2Wa, tgId: '', pin: c2Pin, avatar: '👧🎨', allowanceQuota: c2Quota });
+    }
+
+    // Wallets
+    const wlt1Name = (document.getElementById('wizWlt1Name')?.value || 'Bank Utama').trim();
+    const wlt1Bal = Math.max(0, Number(document.getElementById('wizWlt1Bal')?.value || 0));
+
+    const wlt2Name = (document.getElementById('wizWlt2Name')?.value || 'Uang Tunai Dompet').trim();
+    const wlt2Bal = Math.max(0, Number(document.getElementById('wizWlt2Bal')?.value || 0));
+
+    const wlt3Name = (document.getElementById('wizWlt3Name')?.value || 'E-Wallet / QRIS').trim();
+    const wlt3Bal = Math.max(0, Number(document.getElementById('wizWlt3Bal')?.value || 0));
+
+    const wallets = [
+      { id: 'WLT-01', name: wlt1Name, type: 'Bank', initialBalance: wlt1Bal, info: wlt1Name },
+      { id: 'WLT-02', name: wlt2Name, type: 'Tunai', initialBalance: wlt2Bal, info: wlt2Name },
+      { id: 'WLT-03', name: wlt3Name, type: 'E-wallet', initialBalance: wlt3Bal, info: wlt3Name }
+    ];
+
+    // Budgets
+    const categories = {
+      'Dapur & Makanan': Math.max(0, Number(document.getElementById('wizCatDapur')?.value || 3500000)),
+      'Tagihan & Utilitas': Math.max(0, Number(document.getElementById('wizCatTagihan')?.value || 2000000)),
+      'Transportasi & BBM': Math.max(0, Number(document.getElementById('wizCatTrans')?.value || 1000000)),
+      'Jajan/Anak': Math.max(0, Number(document.getElementById('wizCatJajan')?.value || 800000)),
+      'Kesehatan & Darurat': Math.max(0, Number(document.getElementById('wizCatDarurat')?.value || 800000))
+    };
+
+    const totalInitBalance = wlt1Bal + wlt2Bal + wlt3Bal;
+
+    // 2. Munculkan dialog konfirmasi standar modern
+    showConfirmDialog({
+      title: 'Mulai Bersih dari Nol?',
+      message: 'PERINGATAN: Semua riwayat transaksi dummy, tagihan demo, dan pengajuan dana akan dikosongkan permanen. Akun keluarga baru & saldo riil akan diaktifkan.',
+      detail: {
+        title: `Inisialisasi ${members.length} Anggota & 3 Dompet`,
+        label: 'Total Saldo Kas Awal Riil',
+        amount: formatRp(totalInitBalance)
+      },
+      confirmText: 'Ya, Bersihkan & Mulai',
+      cancelText: 'Kembali Periksa',
+      confirmType: 'danger',
+      onConfirm: async () => {
+        showToast('Sedang mereset dan menginisialisasi database...', 'info');
+        try {
+          const res = await callGasBackend('resetDatabaseToCleanSlate', APP_STATE.currentUser.id, {
+            members: members,
+            wallets: wallets,
+            categories: categories
+          });
+
+          // Update active session locally to Ayah / Admin
+          APP_STATE.currentUser = {
+            id: 'USR-01',
+            name: ayahName,
+            role: 'Admin',
+            waId: ayahWa,
+            pin: ayahPin,
+            avatar: '👨‍💼',
+            allowanceQuota: 0
+          };
+          sessionStorage.setItem('qyona_active_user_obj', JSON.stringify(APP_STATE.currentUser));
+          sessionStorage.setItem('qyona_active_member_id', 'USR-01');
+          localStorage.removeItem('qyona_cache_profiles_v2');
+
+          closeModal('modalFreshSetupWizard');
+          showToast(res.message || 'Database berhasil diinisialisasi bersih dari nol!', 'success');
+
+          // Refresh bootstrap data and login profiles
+          await loadPublicLoginProfiles();
+          await refreshDashboardData(true, true);
+        } catch (err) {
+          showToast('Gagal mereset database: ' + err.message, 'error');
+        }
+      }
+    });
+  }
+
+  /**
+   * ============================================================================
    * UPGRADE v2.0 FITUR #1: KANTONG IMPIAN & TABUNGAN TARGET KELUARGA + BONUS MATCHING
    * ============================================================================
    */
@@ -4376,6 +4531,56 @@
         const rowsHtml = boot.categoryBreakdown.map(c => `<tr><td style="padding:8px;border-bottom:1px solid #cbd5e1;">${c.name}</td><td style="padding:8px;border-bottom:1px solid #cbd5e1;text-align:right;">${formatRp(c.spent)}</td><td style="padding:8px;border-bottom:1px solid #cbd5e1;text-align:right;">${formatRp(c.limit)}</td><td style="padding:8px;border-bottom:1px solid #cbd5e1;text-align:center;">${c.percentage}%</td></tr>`).join('');
         const html = `<html><head><title>Laporan PDF Qyona ${boot.currentMonthYear}</title></head><body style="font-family:sans-serif;padding:24px;"><h2>Laporan Keuangan Rumah Qyona (${boot.currentMonthYear})</h2><p>Saldo Gabungan: <b>${formatRp(boot.summary.totalBalance)}</b> | Total Pengeluaran: <b>${formatRp(boot.summary.totalExpense)} (${boot.summary.budgetUsedPercent}%)</b></p><table width="100%" style="border-collapse:collapse;margin-top:16px;"><thead><tr style="background:#0f766e;color:white;"><th style="padding:8px;text-align:left;">Kategori</th><th style="padding:8px;text-align:right;">Terpakai</th><th style="padding:8px;text-align:right;">Budget</th><th style="padding:8px;">%</th></tr></thead><tbody>${rowsHtml}</tbody></table><p style="margin-top:20px;background:#ecfdf5;padding:12px;border-left:4px solid #10b981;"><b>Kesimpulan AI Insight:</b><br>${boot.insights[0]?.analysis || '-'}</p></body></html>`;
         return { success: true, fileName: `Laporan_Qyona_${boot.currentMonthYear}.pdf`, base64Pdf: '', htmlPreview: html };
+      },
+
+      resetDatabaseToCleanSlate(adminId, payload) {
+        DB.transactions = [];
+        DB.fundRequests = [];
+        DB.bills = [];
+        DB.goals = [];
+        DB.insights = [];
+
+        if (payload && Array.isArray(payload.members) && payload.members.length > 0) {
+          DB.members = payload.members.map((m, idx) => ({
+            id: m.id || `USR-0${idx + 1}`,
+            name: m.name || (idx === 0 ? 'Ayah' : (idx === 1 ? 'Bunda' : `Anak ${idx - 1}`)),
+            role: m.role || (idx <= 1 ? 'Admin' : 'Member'),
+            waId: String(m.waId || '').replace(/[^\d]/g, ''),
+            tgId: String(m.tgId || ''),
+            status: 'Aktif',
+            pin: String(m.pin || (idx <= 1 ? '1234' : '1111')),
+            avatar: m.avatar || (m.role === 'Admin' ? (idx === 0 ? '👨‍💼' : '👩‍💼') : (idx === 2 ? '👦🎒' : '👧🎨')),
+            allowanceQuota: Number(m.allowanceQuota || 0)
+          }));
+        }
+
+        if (payload && Array.isArray(payload.wallets) && payload.wallets.length > 0) {
+          DB.wallets = payload.wallets.map((w, idx) => {
+            const initBal = Math.max(0, Number(w.initialBalance || 0));
+            return {
+              id: w.id || `WLT-0${idx + 1}`,
+              name: w.name || `Dompet ${idx + 1}`,
+              type: w.type || (idx === 0 ? 'Bank' : (idx === 1 ? 'Tunai' : 'E-wallet')),
+              initialBalance: initBal,
+              currentBalance: initBal,
+              info: w.info || w.name || ''
+            };
+          });
+        }
+
+        if (payload && payload.categories && typeof payload.categories === 'object') {
+          Object.keys(payload.categories).forEach(catName => {
+            const found = DB.categories.find(c => c.name.toLowerCase() === catName.toLowerCase());
+            if (found) {
+              found.monthlyLimit = Math.max(0, Number(payload.categories[catName] || 0));
+            }
+          });
+        }
+
+        return {
+          success: true,
+          message: 'Database berhasil diinisialisasi bersih dari nol! Selamat datang di pembukuan keluarga Qyona.'
+        };
       }
     };
   })();

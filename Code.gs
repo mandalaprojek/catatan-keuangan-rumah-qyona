@@ -98,7 +98,8 @@ function executeAllowedRpc(fnName, args) {
     uploadUserWallpaper: uploadUserWallpaper,
     removeUserWallpaper: removeUserWallpaper,
     uploadCustomLogo: uploadCustomLogo,
-    removeCustomLogo: removeCustomLogo
+    removeCustomLogo: removeCustomLogo,
+    resetDatabaseToCleanSlate: resetDatabaseToCleanSlate
   };
   if (!allowed[fnName]) {
     throw new Error('Fungsi RPC tidak terdaftar: ' + fnName);
@@ -182,6 +183,127 @@ function saveScriptConfigs(adminId, configObj) {
     }
   });
   return { success: true, message: 'Konfigurasi sistem berhasil disimpan di PropertiesService.' };
+}
+
+/**
+ * Inisialisasi Bersih dari Nol / Factory Reset Database (Admin Only)
+ * Membersihkan seluruh transaksi, tagihan, pengajuan dana dummy, dan mengaktifkan data riil keluarga.
+ */
+function resetDatabaseToCleanSlate(adminId, payload) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const admin = verifyMemberById(adminId);
+    if (!admin || admin.role !== 'Admin') {
+      throw new Error('RBAC: Hanya Admin (Ayah/Bunda) yang dapat mereset atau menginisialisasi database baru.');
+    }
+
+    const ss = getSpreadsheet();
+    
+    // 1. Kosongkan Riwayat Transaksi (sisakan baris 1 header)
+    const shTrx = ss.getSheetByName(SHEET_NAMES.TRANSAKSI);
+    if (shTrx && shTrx.getLastRow() > 1) {
+      shTrx.getRange(2, 1, shTrx.getLastRow() - 1, shTrx.getLastColumn()).clearContent();
+    }
+
+    // 2. Kosongkan Pengajuan Dana Anak
+    const shReq = ss.getSheetByName(SHEET_NAMES.PENGAJUAN);
+    if (shReq && shReq.getLastRow() > 1) {
+      shReq.getRange(2, 1, shReq.getLastRow() - 1, shReq.getLastColumn()).clearContent();
+    }
+
+    // 3. Kosongkan Tagihan Rutin
+    const shBill = ss.getSheetByName(SHEET_NAMES.TAGIHAN);
+    if (shBill && shBill.getLastRow() > 1) {
+      shBill.getRange(2, 1, shBill.getLastRow() - 1, shBill.getLastColumn()).clearContent();
+    }
+
+    // 4. Kosongkan Kantong Impian / Goals
+    const shGoals = ss.getSheetByName(SHEET_NAMES.GOALS);
+    if (shGoals && shGoals.getLastRow() > 1) {
+      shGoals.getRange(2, 1, shGoals.getLastRow() - 1, shGoals.getLastColumn()).clearContent();
+    }
+
+    // 5. Kosongkan Riwayat Insight AI
+    const shIns = ss.getSheetByName(SHEET_NAMES.INSIGHT);
+    if (shIns && shIns.getLastRow() > 1) {
+      shIns.getRange(2, 1, shIns.getLastRow() - 1, shIns.getLastColumn()).clearContent();
+    }
+
+    // 6. Kosongkan Riwayat Perintah AI
+    const shAiHistori = ss.getSheetByName(SHEET_NAMES.AI_HISTORI);
+    if (shAiHistori && shAiHistori.getLastRow() > 1) {
+      shAiHistori.getRange(2, 1, shAiHistori.getLastRow() - 1, shAiHistori.getLastColumn()).clearContent();
+    }
+
+    // 7. Perbarui Anggota Keluarga Baru
+    if (payload && Array.isArray(payload.members) && payload.members.length > 0) {
+      const shAng = ss.getSheetByName(SHEET_NAMES.ANGGOTA);
+      if (shAng) {
+        if (shAng.getLastRow() > 1) {
+          shAng.getRange(2, 1, shAng.getLastRow() - 1, shAng.getLastColumn()).clearContent();
+        }
+        const memberRows = payload.members.map((m, idx) => [
+          m.id || `USR-0${idx + 1}`,
+          m.name || (idx === 0 ? 'Ayah' : (idx === 1 ? 'Bunda' : `Anak ${idx - 1}`)),
+          m.role || (idx <= 1 ? 'Admin' : 'Member'),
+          String(m.waId || '').replace(/[^\d]/g, ''),
+          String(m.tgId || ''),
+          'Aktif',
+          String(m.pin || (idx <= 1 ? '1234' : '1111')),
+          m.avatar || (m.role === 'Admin' ? (idx === 0 ? '👨‍💼' : '👩‍💼') : (idx === 2 ? '👦🎒' : '👧🎨')),
+          Number(m.allowanceQuota || 0)
+        ]);
+        shAng.getRange(2, 1, memberRows.length, memberRows[0].length).setValues(memberRows);
+      }
+    }
+
+    // 8. Perbarui Dompet & Saldo Kas Awal Riil
+    if (payload && Array.isArray(payload.wallets) && payload.wallets.length > 0) {
+      const shDom = ss.getSheetByName(SHEET_NAMES.DOMPET);
+      if (shDom) {
+        if (shDom.getLastRow() > 1) {
+          shDom.getRange(2, 1, shDom.getLastRow() - 1, shDom.getLastColumn()).clearContent();
+        }
+        const walletRows = payload.wallets.map((w, idx) => {
+          const initBal = Math.max(0, Number(w.initialBalance || 0));
+          return [
+            w.id || `WLT-0${idx + 1}`,
+            w.name || `Dompet ${idx + 1}`,
+            w.type || (idx === 0 ? 'Bank' : (idx === 1 ? 'Tunai' : 'E-wallet')),
+            initBal,
+            initBal,
+            w.info || w.name || ''
+          ];
+        });
+        shDom.getRange(2, 1, walletRows.length, walletRows[0].length).setValues(walletRows);
+      }
+    }
+
+    // 9. Perbarui Batas Anggaran Bulanan Kategori
+    if (payload && payload.categories && typeof payload.categories === 'object') {
+      const shKat = ss.getSheetByName(SHEET_NAMES.KATEGORI);
+      if (shKat && shKat.getLastRow() > 1) {
+        const catData = shKat.getDataRange().getValues();
+        for (let i = 1; i < catData.length; i++) {
+          const catName = String(catData[i][0]);
+          if (payload.categories[catName] !== undefined) {
+            shKat.getRange(i + 1, 2).setValue(Math.max(0, Number(payload.categories[catName] || 0)));
+          }
+        }
+      }
+    }
+
+    recalculateAllWalletBalances(ss);
+    invalidateServerCache();
+
+    return {
+      success: true,
+      message: 'Database berhasil diinisialisasi bersih dari nol! Selamat datang di pembukuan keluarga Qyona.'
+    };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 /**

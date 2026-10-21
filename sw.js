@@ -1,4 +1,4 @@
-const CACHE_NAME = 'qyona-pwa-v10';
+const CACHE_NAME = 'qyona-pwa-v11';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
