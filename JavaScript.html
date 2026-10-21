@@ -148,8 +148,13 @@
    * ============================================================================
    */
   function showToast(message, type = 'success') {
-    const container = document.getElementById('toastContainer');
-    if (!container) return;
+    let container = document.getElementById('toastContainer');
+    if (!container) {
+      container = document.createElement('div');
+      container.id = 'toastContainer';
+      container.className = 'fixed top-4 right-4 z-[100000] flex flex-col gap-2 max-w-sm w-full pointer-events-none px-4 sm:px-0';
+      document.body.appendChild(container);
+    }
 
     const toast = document.createElement('div');
     const bgMap = {
@@ -220,12 +225,15 @@
     const proceedBtn = document.getElementById('btnModalConfirmProceed');
     const cancelBtn = document.getElementById('btnModalConfirmCancel');
 
-    if (!modal) return;
+    if (!modal) {
+      console.warn('modalGlobalConfirm tidak ditemukan di DOM');
+      return;
+    }
 
-    titleEl.textContent = title;
-    msgEl.innerHTML = message;
-    cancelBtn.textContent = cancelText;
-    proceedBtn.textContent = confirmText;
+    if (titleEl) titleEl.textContent = title;
+    if (msgEl) msgEl.innerHTML = message;
+    if (cancelBtn) cancelBtn.textContent = cancelText;
+    if (proceedBtn) proceedBtn.textContent = confirmText;
 
     const typeConfigs = {
       approve: {
@@ -256,27 +264,35 @@
     };
 
     const cfg = typeConfigs[type] || typeConfigs.warning;
-    iconBox.className = `w-16 h-16 rounded-3xl mx-auto mb-4 flex items-center justify-center text-2xl shadow-inner transition-all icon-badge-pulse ${cfg.boxClass}`;
-    icon.className = cfg.iconClass;
-    proceedBtn.className = `w-full py-2.5 px-4 rounded-xl font-bold text-xs text-white shadow-md transition flex items-center justify-center gap-1.5 active:scale-95 ${cfg.btnClass}`;
+    if (iconBox) iconBox.className = `w-16 h-16 rounded-3xl mx-auto mb-4 flex items-center justify-center text-2xl shadow-inner transition-all icon-badge-pulse ${cfg.boxClass}`;
+    if (icon) icon.className = cfg.iconClass;
+    if (proceedBtn) proceedBtn.className = `w-full py-2.5 px-4 rounded-xl font-bold text-xs text-white shadow-md transition flex items-center justify-center gap-1.5 active:scale-95 ${cfg.btnClass}`;
 
-    if (detail) {
-      document.getElementById('modalConfirmDetailLabel').textContent = detail.label || 'Rincian Dokumen';
-      document.getElementById('modalConfirmDetailDate').textContent = detail.date || '';
-      document.getElementById('modalConfirmDetailTitle').textContent = detail.title || '';
-      document.getElementById('modalConfirmDetailAmount').textContent = detail.amount !== undefined ? ('Rp ' + formatRp(detail.amount)) : '';
-      detailCard.classList.remove('hidden');
-    } else {
-      detailCard.classList.add('hidden');
+    if (detailCard) {
+      if (detail) {
+        const dLabel = document.getElementById('modalConfirmDetailLabel');
+        const dDate = document.getElementById('modalConfirmDetailDate');
+        const dTitle = document.getElementById('modalConfirmDetailTitle');
+        const dAmount = document.getElementById('modalConfirmDetailAmount');
+        if (dLabel) dLabel.textContent = detail.label || 'Rincian Dokumen';
+        if (dDate) dDate.textContent = detail.date || '';
+        if (dTitle) dTitle.textContent = detail.title || '';
+        if (dAmount) dAmount.textContent = detail.amount !== undefined ? formatRp(detail.amount) : '';
+        detailCard.classList.remove('hidden');
+      } else {
+        detailCard.classList.add('hidden');
+      }
     }
 
     currentConfirmAction = onConfirm;
-    proceedBtn.onclick = async () => {
-      closeConfirmModal();
-      if (typeof currentConfirmAction === 'function') {
-        await currentConfirmAction();
-      }
-    };
+    if (proceedBtn) {
+      proceedBtn.onclick = async () => {
+        closeConfirmModal();
+        if (typeof currentConfirmAction === 'function') {
+          await currentConfirmAction();
+        }
+      };
+    }
 
     modal.classList.remove('hidden');
   }
@@ -286,6 +302,113 @@
     if (modal) modal.classList.add('hidden');
     currentConfirmAction = null;
   }
+
+  /**
+   * ============================================================================
+   * KOMPONEN INTERAKTIF: AKSI PERSETUJUAN DOKUMEN & PENGAJUAN DANA
+   * ============================================================================
+   */
+  function triggerDocApprovalAction(actionType) {
+    const isApprove = actionType === 'APPROVE';
+    const amountVal = 125000;
+    
+    showConfirmDialog({
+      title: isApprove ? 'Konfirmasi Persetujuan Dokumen' : 'Konfirmasi Pembatalan Dokumen',
+      message: isApprove
+        ? 'Apakah Anda yakin ingin menyetujui dokumen pengajuan ini? Saldo dompet akan dicairkan dan transaksi resmi disahkan.'
+        : 'Apakah Anda yakin ingin membatalkan/menolak pengajuan dokumen ini?',
+      type: isApprove ? 'approve' : 'reject',
+      detail: {
+        label: 'Dokumen Pengajuan Dana Anak (REQ-01)',
+        title: 'Buku latihan Olimpiade Sains & alat praktikum',
+        amount: amountVal,
+        date: 'Hari Ini, 14:00 WIB'
+      },
+      confirmText: isApprove ? 'Ya, Lanjutkan' : 'Ya, Batalkan',
+      cancelText: 'Kembali',
+      onConfirm: async () => {
+        const badge = document.getElementById('docApprovalStatusBadge');
+        const actionsBox = document.getElementById('docApprovalActionButtons');
+        
+        if (isApprove) {
+          if (badge) {
+            badge.className = 'text-[11px] font-extrabold px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-400/40 flex items-center gap-1';
+            badge.innerHTML = '<i class="fa-solid fa-circle-check text-[10px]"></i> Disetujui';
+          }
+          if (actionsBox) {
+            actionsBox.innerHTML = `
+              <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-extrabold text-xs">
+                <i class="fa-solid fa-circle-check"></i> Telah Disetujui
+              </span>
+              <button type="button" onclick="resetDocApprovalDemo()" class="text-xs text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 underline font-semibold transition ml-2">
+                Uji Lagi
+              </button>
+            `;
+          }
+          showToast('Dokumen pengajuan dana berhasil disetujui & diverifikasi!', 'success');
+        } else {
+          if (badge) {
+            badge.className = 'text-[11px] font-extrabold px-2.5 py-0.5 rounded-full bg-rose-500/15 text-rose-700 dark:text-rose-300 border border-rose-400/40 flex items-center gap-1';
+            badge.innerHTML = '<i class="fa-solid fa-ban text-[10px]"></i> Dibatalkan';
+          }
+          if (actionsBox) {
+            actionsBox.innerHTML = `
+              <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-500/15 text-rose-700 dark:text-rose-300 font-extrabold text-xs">
+                <i class="fa-solid fa-ban"></i> Telah Dibatalkan
+              </span>
+              <button type="button" onclick="resetDocApprovalDemo()" class="text-xs text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 underline font-semibold transition ml-2">
+                Uji Lagi
+              </button>
+            `;
+          }
+          showToast('Aksi persetujuan dokumen telah dibatalkan.', 'info');
+        }
+
+        // Sinkronisasi data ke Google Sheets jika ada permintaan pending di backend
+        if (APP_STATE.currentUser && APP_STATE.currentUser.role === 'Admin') {
+          try {
+            const firstPending = APP_STATE.bootstrapData?.fundRequests?.find(r => r.status === 'Menunggu Approval');
+            if (firstPending) {
+              await callGasBackend('processFundRequestApproval', APP_STATE.currentUser.id, firstPending.id, isApprove ? 'APPROVE' : 'REJECT');
+              await refreshDashboardData(true);
+            }
+          } catch (e) {
+            console.log('Catatan sinkronisasi backend:', e.message);
+          }
+        }
+      }
+    });
+  }
+
+  function resetDocApprovalDemo() {
+    const badge = document.getElementById('docApprovalStatusBadge');
+    const actionsBox = document.getElementById('docApprovalActionButtons');
+    if (badge) {
+      badge.className = 'text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-400/30 flex items-center gap-1';
+      badge.innerHTML = '<i class="fa-solid fa-clock-rotate-left text-[10px]"></i> Menunggu Persetujuan';
+    }
+    if (actionsBox) {
+      actionsBox.innerHTML = `
+        <button type="button" id="btnDocApprove" onclick="triggerDocApprovalAction('APPROVE')" class="py-2.5 px-5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-black text-xs shadow-lg shadow-emerald-600/30 transition flex items-center gap-2" title="Setujui Dokumen Ini">
+          <i class="fa-solid fa-circle-check text-sm"></i>
+          <span>Setuju</span>
+        </button>
+        <button type="button" id="btnDocReject" onclick="triggerDocApprovalAction('REJECT')" class="py-2.5 px-5 rounded-2xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/60 dark:hover:bg-rose-900/60 text-rose-600 dark:text-rose-400 border border-rose-200/80 dark:border-rose-800 active:scale-95 font-black text-xs transition flex items-center gap-2" title="Batalkan / Tolak Dokumen">
+          <i class="fa-solid fa-circle-xmark text-sm"></i>
+          <span>Batal</span>
+        </button>
+      `;
+    }
+    showToast('Komponen persetujuan dokumen siap diuji kembali.', 'info');
+  }
+
+  // Registrasi window global untuk akses instan
+  window.triggerDocApprovalAction = triggerDocApprovalAction;
+  window.resetDocApprovalDemo = resetDocApprovalDemo;
+  window.showConfirmDialog = showConfirmDialog;
+  window.closeConfirmModal = closeConfirmModal;
+  window.showToast = showToast;
+  window.dismissToast = dismissToast;
 
   function formatRp(num) {
     const n = Math.round(Number(num || 0));

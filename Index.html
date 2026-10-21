@@ -524,6 +524,53 @@
             </div>
           </div>
 
+          <!-- ========================================================================
+               KOMPONEN UI INTERAKTIF: AKSI PERSETUJUAN DOKUMEN & PENGAJUAN DANA
+               Terdiri dari:
+               1. Kartu Persetujuan Dokumen dengan Rincian Informasi
+               2. Dua Tombol Utama: 'Setuju' (Hijau) dan 'Batal' (Merah/Abu-abu)
+               3. Terhubung langsung ke Pop-up Modal Konfirmasi & Toast Notification Modern 3 Detik
+               ======================================================================== -->
+          <div id="cardInteractiveDocumentApproval" class="p-5 rounded-3xl bg-gradient-to-r from-emerald-500/10 via-teal-500/10 to-indigo-500/10 border-2 border-emerald-500/30 dark:border-emerald-500/20 shadow-sm relative overflow-hidden">
+            <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <!-- Info Dokumen -->
+              <div class="flex items-start gap-3.5">
+                <div class="w-12 h-12 rounded-2xl bg-emerald-600 text-white flex items-center justify-center text-xl shrink-0 shadow-md shadow-emerald-600/25">
+                  <i class="fa-solid fa-file-signature"></i>
+                </div>
+                <div class="space-y-1">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <span class="text-xs font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-emerald-600 text-white">Aksi Persetujuan Dokumen</span>
+                    <span id="docApprovalStatusBadge" class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-400/30 flex items-center gap-1">
+                      <i class="fa-solid fa-clock-rotate-left text-[10px]"></i> Menunggu Persetujuan
+                    </span>
+                  </div>
+                  <h4 id="docApprovalTitle" class="font-black text-sm sm:text-base text-slate-900 dark:text-white">Pengajuan Dana Tambahan & Belanja Edukasi Anak</h4>
+                  <p id="docApprovalDesc" class="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                    Dokumen permohonan dana dari <b class="text-slate-800 dark:text-slate-100">Kakak Raka</b> untuk <span class="italic">"Buku latihan Olimpiade Sains & alat praktikum"</span>.
+                  </p>
+                  <div class="flex items-center gap-3 text-xs pt-0.5">
+                    <span class="font-black text-emerald-600 dark:text-emerald-400 text-sm" id="docApprovalAmount">Rp 125.000</span>
+                    <span class="text-slate-400">•</span>
+                    <span class="text-slate-500 dark:text-slate-400" id="docApprovalMeta"><i class="fa-regular fa-calendar mr-1"></i>Hari Ini, 14:00 WIB</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 1) Dua Tombol Utama: 'Setuju' (hijau) dan 'Batal' (merah/abu-abu) -->
+              <div id="docApprovalActionButtons" class="flex items-center gap-2.5 shrink-0 self-end md:self-center">
+                <button type="button" id="btnDocApprove" onclick="triggerDocApprovalAction('APPROVE')" class="py-2.5 px-5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-black text-xs shadow-lg shadow-emerald-600/30 transition flex items-center gap-2" title="Setujui Dokumen Ini">
+                  <i class="fa-solid fa-circle-check text-sm"></i>
+                  <span>Setuju</span>
+                </button>
+                <button type="button" id="btnDocReject" onclick="triggerDocApprovalAction('REJECT')" class="py-2.5 px-5 rounded-2xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/60 dark:hover:bg-rose-900/60 text-rose-600 dark:text-rose-400 border border-rose-200/80 dark:border-rose-800 active:scale-95 font-black text-xs transition flex items-center gap-2" title="Batalkan / Tolak Dokumen">
+                  <i class="fa-solid fa-circle-xmark text-sm"></i>
+                  <span>Batal</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
           <!-- Grafik Donut Kategori & Progress Bar Auto-Tracking (US-3 AC1) -->
           <div class="grid grid-cols-1 xl:grid-cols-12 gap-6">
             <!-- Grafik Donut -->
@@ -1228,7 +1275,7 @@
        MODAL 6: POP-UP MODAL KONFIRMASI INTERAKTIF GLOBAL (TENGAH LAYAR)
        Aksi Persetujuan Dokumen, Pembatalan Transaksi, Tagihan & Approval
        ======================================================================== -->
-  <div id="modalGlobalConfirm" class="fixed inset-0 z-[95] hidden bg-slate-950/65 backdrop-blur-xs flex items-center justify-center p-4">
+  <div id="modalGlobalConfirm" onclick="if(event.target === this) closeConfirmModal()" class="fixed inset-0 z-[99999] hidden bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4">
     <div class="bg-white dark:bg-slate-900 rounded-3xl max-w-sm w-full p-6 text-center border border-slate-200 dark:border-slate-800 shadow-2xl animate-fade-in relative">
       <!-- Ikon Peringatan / Checklist Dinamis dengan Denyut Lembut -->
       <div id="modalConfirmIconBox" class="w-16 h-16 rounded-3xl mx-auto mb-4 flex items-center justify-center text-2xl shadow-inner transition-all icon-badge-pulse bg-emerald-100 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400">

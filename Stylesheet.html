@@ -243,4 +243,19 @@
   .icon-badge-pulse {
     animation: iconBadgePulse 2.2s infinite ease-in-out;
   }
+
+  /* Jaminan Visibilitas & Prioritas Layer Modal Global Konfirmasi & Toast */
+  #modalGlobalConfirm.hidden {
+    display: none !important;
+  }
+  #modalGlobalConfirm:not(.hidden) {
+    display: flex !important;
+  }
+  #modalGlobalConfirm {
+    z-index: 99999 !important;
+  }
+  #toastContainer {
+    z-index: 100000 !important;
+    pointer-events: none !important;
+  }
 </style>
